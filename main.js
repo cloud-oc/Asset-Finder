@@ -424,6 +424,7 @@ function updateThemeButtonLabel() {
     }
     button.title = label;
     button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', isLight ? 'true' : 'false');
     button.dataset.theme = isLight ? 'light' : 'dark';
 }
 
@@ -1122,6 +1123,8 @@ async function showHelp() {
     await renderHelpContent();
     // show via aria attribute (CSS controls display and centering)
     wrap.setAttribute('aria-hidden','false');
+    const helpButton = document.getElementById('helpBtn');
+    if (helpButton) helpButton.setAttribute('aria-expanded', 'true');
     // also explicitly set display to flex to avoid CSS/environment glitches
     wrap.style.display = 'flex';
     const modal = wrap.querySelector('.help-modal');
@@ -1143,6 +1146,8 @@ function hideHelp() {
     const wrap = document.getElementById('helpModalBackdrop');
     if (!wrap) return;
     wrap.setAttribute('aria-hidden','true');
+    const helpButton = document.getElementById('helpBtn');
+    if (helpButton) helpButton.setAttribute('aria-expanded', 'false');
     // ensure backdrop is hidden visually too
     wrap.style.display = 'none';
     const modal = wrap.querySelector('.help-modal');

@@ -10,7 +10,7 @@
     <!-- Favicon (folder + magnifier) -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="shortcut icon" href="favicon.svg">
-    <link rel="mask-icon" href="favicon.svg" color="#00C2FF">
+    <link rel="mask-icon" href="favicon.svg" color="#087FAE">
     <meta name="theme-color" content="#071018">
     <script>
         // Apply the saved/system theme before the first paint to avoid a flash.
@@ -35,17 +35,17 @@
             </div>
             <div class="header-right">
                 <div class="header-actions" role="toolbar" aria-label="Top actions">
-                    <button class="theme-toggle" id="themeToggle" type="button" title="切换主题" aria-label="切换主题">
+                    <button class="theme-toggle header-action" id="themeToggle" type="button" title="切换主题" aria-label="切换主题" aria-pressed="false">
                         <i class="fa-solid fa-sun" aria-hidden="true"></i>
                         <span class="sr-only">切换明暗主题</span>
                     </button>
-                    <button class="help-btn" id="helpBtn" title="Help" aria-label="Help">
+                    <button class="help-btn header-action" id="helpBtn" title="资源检索与核对指南" aria-label="资源检索与核对指南" aria-expanded="false">
                         <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
                     </button>
-                    <button class="lang-switch-btn" id="langSwitch" onclick="switchLang()" title="Switch language" aria-label="Switch language">
+                    <button class="lang-switch-btn header-action" id="langSwitch" onclick="switchLang()" title="切换语言" aria-label="切换语言">
                         <i class="fa-solid fa-language" aria-hidden="true"></i>
                     </button>
-                    <a id="githubBtn" class="github-btn" href="https://github.com/cloud-oc/AssetFinderWeb" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub repository">
+                    <a id="githubBtn" class="github-btn header-action" href="https://github.com/cloud-oc/AssetFinderWeb" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub repository">
                         <i class="fa-brands fa-github" aria-hidden="true"></i>
                     </a>
                 </div>
@@ -60,11 +60,11 @@
             <div class="choose-row">
                 <button id="chooseDirBtn" class="btn-choose small" type="button" aria-live="polite">
                     <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
-                    <span class="choose-label">选择资产文件夹</span>
+                    <span class="choose-label">选择项目目录</span>
                     <span class="choose-status" aria-live="polite" role="status" aria-atomic="true"></span>
                     <span class="choose-progress" aria-hidden="true"><span class="choose-progress-fill"></span></span>
                 </button>
-                <button id="openFormatBtn" class="btn-format" type="button">文件格式筛选</button>
+                <button id="openFormatBtn" class="btn-format" type="button">资源格式筛选</button>
                 <input type="file" id="dirInput" webkitdirectory directory multiple style="display:none" onchange="handleImport(this)">
             </div>
 
@@ -108,10 +108,11 @@
         </div>
         <div class="card">
             <div class="section-title" id="inputTitle"></div>
+            <p class="query-hint" id="inputHint"></p>
             <div class="editor-row">
                 <div class="code-wrapper">
                     <div class="gutter" id="inputGutter"></div>
-                    <textarea id="inputText" wrap="off" placeholder="Example:&#10;Hero_Knight Assets/Characters&#10;Stone_A Assets/Environment/Rocks"></textarea>
+                    <textarea id="inputText" wrap="off" placeholder="将排期或上传清单粘贴到这里&#10;文件名    相对/子路径&#10;Hero_Knight    Assets/Characters"></textarea>
                 </div>
                 <button class="btn-run" id="runBtn" onclick="handleSearch()" disabled></button>
             </div>
@@ -137,7 +138,7 @@
     <div class="format-modal-backdrop" id="formatModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
         <div class="format-modal" role="document" tabindex="-1">
             <div class="format-modal-header">
-                <strong id="formatModalTitle">文件格式筛选</strong>
+                <strong id="formatModalTitle">资源格式筛选</strong>
             </div>
             <div class="format-modal-body">
                 <div class="format-panel small">

@@ -543,3 +543,141 @@ html[data-theme="light"] .format-tag.active { color: #fff; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
+/* Review-console consistency layer */
+.header-actions .header-action {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-1);
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .12s ease;
+}
+.header-actions .header-action i { font-size: 16px; line-height: 1; }
+.header-actions .header-action:hover {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--text-main);
+    transform: translateY(-1px);
+    box-shadow: none;
+}
+.header-actions .header-action:active { transform: translateY(0) scale(.95); }
+.header-actions .header-action:focus { outline: none; box-shadow: none; }
+.header-actions .header-action:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--primary) 34%, transparent);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+.header-actions .header-action[aria-pressed="true"],
+.header-actions .header-action[aria-expanded="true"] {
+    background: color-mix(in srgb, var(--primary) 13%, var(--surface-1));
+    border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+    color: var(--primary);
+}
+.header-actions .header-action:disabled,
+.header-actions .header-action[aria-disabled="true"] {
+    opacity: .45;
+    cursor: not-allowed;
+    transform: none;
+}
+.header-actions .lang-switch-btn,
+.header-actions .help-btn,
+.header-actions .theme-toggle,
+.header-actions .github-btn {
+    background: var(--surface-1);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    margin-left: 0;
+    margin-right: 0;
+}
+.header-actions .theme-toggle i { color: var(--primary); }
+
+.query-hint {
+    margin: -4px 0 12px;
+    color: var(--subtle);
+    font-size: .84rem;
+    line-height: 1.55;
+}
+
+input[type="text"], input[type="search"], textarea {
+    appearance: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--input-bg);
+    color: var(--text-main);
+    transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+input[type="text"], input[type="search"] { min-height: 40px; padding: 9px 12px; }
+input[type="text"]:hover, input[type="search"]:hover, textarea:hover { border-color: var(--border-strong); }
+input[type="text"]:focus-visible, input[type="search"]:focus-visible, textarea:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--primary) 25%, transparent);
+    outline-offset: 1px;
+    border-color: var(--primary);
+}
+input[type="text"]:disabled, input[type="search"]:disabled, textarea:disabled {
+    cursor: not-allowed;
+    opacity: .56;
+    background: var(--surface-2);
+}
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--danger); }
+input::selection, textarea::selection { background: color-mix(in srgb, var(--primary) 36%, transparent); }
+input::placeholder, textarea::placeholder { color: var(--subtle); opacity: 1; }
+
+.code-wrapper {
+    border-color: var(--border);
+    transition: border-color .16s ease, box-shadow .16s ease;
+}
+.code-wrapper:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.code-wrapper textarea {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+.code-wrapper textarea:focus-visible {
+    outline: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+.code-wrapper textarea[readonly] {
+    background: color-mix(in srgb, var(--surface-2) 48%, var(--input-bg));
+    color: var(--text-main);
+}
+
+@media (max-width: 720px) {
+    .header-actions .header-action { width: 36px; height: 36px; flex-basis: 36px; }
+    .query-hint { margin-bottom: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header-actions .header-action,
+    input[type="text"], input[type="search"], textarea, .code-wrapper { transition: none; }
+}
+/* Include generated modal inputs without affecting hidden file controls or checkboxes. */
+input:not([type="checkbox"]):not([type="file"]) {
+    appearance: none;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--input-bg);
+    color: var(--text-main);
+    transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+input:not([type="checkbox"]):not([type="file"]):hover { border-color: var(--border-strong); }
+input:not([type="checkbox"]):not([type="file"]):focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--primary) 25%, transparent);
+    outline-offset: 1px;
+    border-color: var(--primary);
+}
+input:not([type="checkbox"]):not([type="file"])::placeholder { color: var(--subtle); opacity: 1; }

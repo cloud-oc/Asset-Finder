@@ -1,61 +1,68 @@
-# Asset Finder — Usage Guide
+# Resource Search & Review Guide
 
-## Overview
-Asset Finder is a web-based bulk asset file search tool.
-It can quickly locate resources in large projects and typically handles anywhere from tens of thousands to millions of files. The actual capacity depends on the browser's available memory, the length of individual file names/paths, and system resource limits. To keep the page responsive, indexing and searching are performed in chunks; additionally, filtering by file extensions can significantly reduce the number of files that need to be scanned, improving speed and stability.
+## What this tool is
 
-## 1) Quick start — 5 steps
-1. **Import your project**: Click the **📂 Import** button and select the folder that contains your assets.
-2. **Select formats**: In the "Format Filters" choose which file extensions to include (you can enable or disable whole categories). If you are unsure, click **Select All** at the top.
-3. **Choose match mode**: Pick a matching method in the "File Name Match Mode" section (see details below). Turn on **Case Sensitive** or **Ignore Spaces** as needed.
-4. **Fill in queries**: In the left input box (`Files to Check - Relative Path List`), write one query per line using the format:
+Asset Finder Web is a bulk search and review tool for local project resources. It compares the files in an actual project directory with a schedule, upload-status sheet, delivery list, or any other checklist.
+
+Art-asset delivery review is one common use case, but the tool also works well for resource inventory, pre-release checks, outsourcing deliveries, and project-directory cleanup.
+
+The tool compares file names, relative paths, and extensions only. It does not read file contents and does not connect to scheduling systems or upload platforms.
+
+## Recommended workflow
+
+1. **Import the actual directory**: Use the folder button at the top and choose the project directory you want to check.
+2. **Prepare a checklist**: Arrange a schedule, upload-status sheet, or delivery record as file name and relative path. You can copy two columns directly from a spreadsheet.
+3. **Choose rules**: Select the resource extensions to review and choose a filename matching mode.
+4. **Run a bulk check**: Paste the checklist into the query box and click “Run check”. The tool checks each line against the project index.
+5. **Review the result**: A listed row means the corresponding file was found in the project directory. A missing row is a candidate for manual review.
+6. **Export the record**: Export the plain-text result as supporting material for review or delivery tracking.
+
+## Input format
+
+Write one record per line:
 
 ~~~
 FileName    Relative/Path
-or
-FileName  <tab>  Relative/Path
 ~~~
 
 For example:
 
 ~~~
-Hero_Knight Assets/Characters
-Stone_A  Assets/Environment/Rocks
+Hero_Knight    Assets/Characters
+Stone_A        Assets/Environment/Rocks
 ~~~
 
-Note: You may use multiple spaces or a Tab between the file name and the path; paths may contain subdirectories.
+Use multiple spaces or a Tab between the file name and path. Paths may contain nested directories. Enter the name without its extension: `Hero_Knight` can match `Hero_Knight.prefab` or `Hero_Knight.png`.
 
-5. **Search and export**: Click **Search**. The search/indexing progress appears above the results. When complete, click **Export** to download the results as a text file (each line: `FileName.ext[TAB]relative/path`).
+## Matching modes
 
-## 2) Match modes explained (examples)
-- **Exact**: The file name (without extension) must match exactly. Example: query `Hero` will match `Hero.png` or `Hero.prefab`.
-- **Prefix**: The file name starts with the query. Example: query `Stone` matches `Stone_A`, `Stone_B`.
-- **Suffix**: The file name ends with the query. Example: query `_A` matches `Stone_A`.
-- **Keyword**: The query appears anywhere in the file name (equivalent to a contains match).
+- **Exact**: The filename without its extension must match exactly.
+- **Prefix**: The filename starts with the query, such as `Stone` matching `Stone_A`.
+- **Suffix**: The filename ends with the query, such as `_A` matching `Stone_A`.
+- **Keyword**: The query appears anywhere in the filename.
+- **Case Sensitive**: Match filename casing exactly.
+- **Ignore Spaces**: Handle spacing differences between a checklist and project naming.
 
-Turning on **Ignore Spaces** usually increases hit rate (for example, `Hero Knight` can match `HeroKnight`).
+If no resource formats are selected, the search does not restrict extensions. To review only selected types, choose the corresponding extensions in the format filter.
 
-## 3) Input / Output format and example
-- Input: each line should be `FileName Relative/Path` (for example `MyMesh Assets/Models/Characters`).
-- Output: each line will be `FileName.ext[TAB]relative/path` (for example `Hero_Knight.fbx\tAssets/Characters`).
+## Reading the result
 
-Example:
+The output lists each file found in the project index with its filename and relative directory. The tool does not generate a full diff report or compare file contents, so these cases still need human review:
 
-~~~
-Input:
-Hero_Knight Assets/Characters
-Stone_A Assets/Environment/Rocks
+- Checklist rows that do not appear in the result;
+- Similar but not identical names;
+- Unexpected directory levels or delivery versions;
+- Files that exist but still require content, version, or upload-status verification.
 
-Output:
-Hero_Knight.fbx	Assets/Characters
-Stone_A.png	Assets/Environment/Rocks
-~~~
+## Large projects and cancellation
 
-## 4) Performance & large project tips
-- Be patient when indexing very large projects (tens of thousands or millions of files).
-- If the browser becomes sluggish during import, avoid heavy operations at the same time or import smaller folders in batches.
+Indexing and searching run in chunks and yield between batches so the browser remains responsive. Progress is based on processed files / total files, with size, rate, and estimated remaining time shown when available.
 
-## 5) Frequently asked questions & troubleshooting
-- Q: After importing, nothing can be found?  A: Make sure at least one file format is selected (or click **Select All**) and verify the input format is correct.
-- Q: Help content doesn't render formatting (bold/list)?  A: The tool renders Markdown; use standard Markdown syntax (`# headings`, `- lists`, `**bold**`, code blocks with ``` or ~~~).
-- Q: Local help files won't load when opening the HTML directly?  A: Some browsers block fetch requests under the `file://` protocol. Run a local server in the project folder (for example: `python -m http.server`) and open the page at `http://localhost:8000` to load local Markdown files normally.
+You can cancel a large import or bulk check. Cancelling an import keeps the previous usable index; cancelling a search keeps the previous result.
+
+## FAQ
+
+- **Why can’t I search after importing?** Make sure indexing has finished and at least one filename matching mode is selected.
+- **Why are there fewer results than checklist rows?** Missing rows are usually candidates for manual review of path, filename, extension, or delivery status.
+- **Why is the help content empty?** Browsers may block Markdown fetches when the page is opened with `file://`. Run `python -m http.server 8000` in the project folder instead.
+- **Which browsers are supported?** Folder selection relies on `webkitdirectory`; Chrome, Edge, and other Chromium browsers are recommended.
