@@ -39,6 +39,49 @@ function getAllGroups() {
     return list;
 }
 
+function bindOnce(element, eventName, handler, key) {
+    if (!element) return;
+    const marker = `__assetFinderBound_${key || eventName}`;
+    if (element[marker]) return;
+    element.addEventListener(eventName, handler);
+    element[marker] = true;
+}
+
+function getFocusableElements(root) {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.hidden && el.getAttribute('aria-hidden') !== 'true' && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden');
+}
+
+function openModalA11y(backdrop, modal, opener, preferredSelector) {
+    if (!backdrop || !modal) return;
+    modal.__assetFinderReturnFocus = opener && typeof opener.focus === 'function' ? opener : document.activeElement;
+    if (!backdrop.__assetFinderFocusTrap) {
+        backdrop.__assetFinderFocusTrap = (event) => {
+            if (event.key !== 'Tab') return;
+            const focusable = getFocusableElements(modal);
+            if (!focusable.length) { event.preventDefault(); modal.focus(); return; }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        };
+    }
+    backdrop.addEventListener('keydown', backdrop.__assetFinderFocusTrap);
+    const target = (preferredSelector && modal.querySelector(preferredSelector)) || getFocusableElements(modal)[0] || modal;
+    setTimeout(() => target.focus(), 20);
+}
+
+function closeModalA11y(backdrop, modal) {
+    if (!backdrop || !modal) return;
+    if (backdrop.__assetFinderFocusTrap) backdrop.removeEventListener('keydown', backdrop.__assetFinderFocusTrap);
+    const returnFocus = modal.__assetFinderReturnFocus;
+    modal.__assetFinderReturnFocus = null;
+    const fallback = document.getElementById('openFormatBtn') || document.getElementById('helpBtn');
+    const target = returnFocus && returnFocus.isConnected ? returnFocus : fallback;
+    if (target && typeof target.focus === 'function') setTimeout(() => target.focus(), 0);
+}
+
 function initUI() {
     const sidebar = document.getElementById('formatCategories');
     const gridWrap = document.getElementById('formatGridWrap');
@@ -47,37 +90,40 @@ function initUI() {
     const groups = getAllGroups();
     // 渲染侧栏
     groups.forEach((g, idx) => {
-        const el = document.createElement('div'); el.className = 'cat-item'; el.dataset.id = g.id; el.innerHTML = `<span>${escapeHtml(g.name)}</span>`;
+        const el = document.createElement('button'); el.type = 'button'; el.className = 'cat-item'; el.dataset.id = g.id; el.setAttribute('aria-pressed', 'false'); el.innerHTML = `<span>${escapeHtml(g.name)}</span>`;
         el.addEventListener('click', () => { showCategory(g.id); });
         sidebar.appendChild(el);
         if (idx === 0) { currentCategoryId = g.id; el.classList.add('active'); }
     });
     // 绑定搜索与操作事件
-    const search = document.getElementById('formatSearch'); if (search) search.addEventListener('input', () => renderCategoryGrid(currentCategoryId));
+    const search = document.getElementById('formatSearch'); bindOnce(search, 'input', () => renderCategoryGrid(currentCategoryId), 'formatSearchInput');
     // 注意：`clearSelection` 被有意省略（无操作）
 
     // 确保“添加组”按钮已绑定事件
-    const addGroupBtn = document.getElementById('addGroupBtn'); if (addGroupBtn) addGroupBtn.addEventListener('click', addCustomGroup);
+    const addGroupBtn = document.getElementById('addGroupBtn'); bindOnce(addGroupBtn, 'click', addCustomGroup, 'addGroup');
 
-    const nameEl = document.getElementById('customGroupName'); if (nameEl) { nameEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('customGroupExts').focus(); } }); }
-    const inputEl = document.getElementById('customGroupExts'); if (inputEl) { inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomGroup(); } }); }
+    const nameEl = document.getElementById('customGroupName'); bindOnce(nameEl, 'keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('customGroupExts').focus(); } }, 'customGroupNameEnter');
+    const inputEl = document.getElementById('customGroupExts'); bindOnce(inputEl, 'keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomGroup(); } }, 'customGroupExtsEnter');
+    bindOnce(nameEl, 'input', () => setFormatFeedback(''), 'customGroupNameInput');
+    bindOnce(inputEl, 'input', () => setFormatFeedback(''), 'customGroupExtsInput');
 
     // 绑定选择文件夹按钮
-    const chooseBtn = document.getElementById('chooseDirBtn'); if (chooseBtn) { chooseBtn.addEventListener('click', () => { const di = document.getElementById('dirInput'); if (di) di.click(); }); }
-    const openFmtBtn = document.getElementById('openFormatBtn'); if (openFmtBtn) { openFmtBtn.addEventListener('click', () => { const back = document.getElementById('formatModalBackdrop'); if (back && back.getAttribute('aria-hidden') === 'false') hideFormatModal(); else showFormatModal(); }); }
-    const fmtBackdrop = document.getElementById('formatModalBackdrop'); if (fmtBackdrop) fmtBackdrop.addEventListener('click', (e) => { if (e.target === fmtBackdrop) hideFormatModal(); });
+    const chooseBtn = document.getElementById('chooseDirBtn'); bindOnce(chooseBtn, 'click', () => { const di = document.getElementById('dirInput'); if (di && !importTask) di.click(); }, 'chooseDirectory');
+    const openFmtBtn = document.getElementById('openFormatBtn'); bindOnce(openFmtBtn, 'click', () => { const back = document.getElementById('formatModalBackdrop'); if (back && back.getAttribute('aria-hidden') === 'false') hideFormatModal(); else showFormatModal(); }, 'openFormatModal');
+    const fmtBackdrop = document.getElementById('formatModalBackdrop'); bindOnce(fmtBackdrop, 'click', (e) => { if (e.target === fmtBackdrop) hideFormatModal(); }, 'formatBackdrop');
+    const closeFormatBtn = document.getElementById('closeFormatBtn'); bindOnce(closeFormatBtn, 'click', hideFormatModal, 'closeFormatModal');
 
     // 确保匹配模式复选框更新 UI 并刷新运行按钮状态
     document.querySelectorAll('.logic-chk, #caseSensitive, #ignoreSpaces').forEach(el => {
         if (!el) return;
-        el.addEventListener('change', () => syncUI(el));
+        bindOnce(el, 'change', () => { syncUI(el); }, 'logicChange');
     });
 
     // 若输入文本变化，重新计算运行按钮状态（当输入为空时应禁用）
     const inputTextEl = document.getElementById('inputText');
     if (inputTextEl) {
-        inputTextEl.addEventListener('input', updateRunBtnState);
-        inputTextEl.addEventListener('change', updateRunBtnState);
+        bindOnce(inputTextEl, 'input', () => { inputTextEl.removeAttribute('aria-invalid'); updateRunBtnState(); }, 'queryInput');
+        bindOnce(inputTextEl, 'change', updateRunBtnState, 'queryChange');
     }
 
     // 默认不自动选中任何匹配模式；用户需手动选择以启用搜索
@@ -96,28 +142,53 @@ function showFormatModal() {
     if (!back || !modal || !btn) return;
     // 在弹窗中渲染 UI，然后以按钮为锚点定位
     initUI();
-    modal.style.position = 'absolute';
+    modal.style.position = 'fixed';
     back.setAttribute('aria-hidden','false');
+    btn.setAttribute('aria-expanded','true');
     positionFormatModal();
     // 弹窗打开时监听窗口改变以重新定位
     window.addEventListener('resize', positionFormatModal);
     window.addEventListener('scroll', positionFormatModal, true);
-    setTimeout(() => { const s = document.getElementById('formatSearch'); if (s) s.focus(); }, 30);
+    openModalA11y(back, modal, btn, '#formatSearch');
 }
 
 function hideFormatModal() {
     const back = document.getElementById('formatModalBackdrop'); const modal = document.querySelector('.format-modal');
-    if (!back) return; back.setAttribute('aria-hidden','true');
+    if (!back) return;
+    back.setAttribute('aria-hidden','true');
+    const opener = document.getElementById('openFormatBtn'); if (opener) opener.setAttribute('aria-expanded','false');
+    closeModalA11y(back, modal);
     // 清理内联定位与事件监听
     if (modal) { modal.style.top = ''; modal.style.left = ''; }
     window.removeEventListener('resize', positionFormatModal);
     window.removeEventListener('scroll', positionFormatModal, true);
 }
 
-// 注意：按 Esc 关闭弹窗
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') {
-    const back = document.getElementById('formatModalBackdrop'); if (back && back.getAttribute('aria-hidden') === 'false') hideFormatModal();
-} });
+// 按 Esc 关闭当前最上层弹窗。只保留一个全局入口，避免多个弹窗监听器
+// 互相抢焦点（例如编辑弹窗打开时误把焦点移到帮助按钮）。
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const edit = document.getElementById('editModalBackdrop');
+    if (edit && edit.getAttribute('aria-hidden') === 'false') {
+        e.preventDefault();
+        e.stopPropagation();
+        hideEditModal();
+        return;
+    }
+    const format = document.getElementById('formatModalBackdrop');
+    if (format && format.getAttribute('aria-hidden') === 'false') {
+        e.preventDefault();
+        e.stopPropagation();
+        hideFormatModal();
+        return;
+    }
+    const help = document.getElementById('helpModalBackdrop');
+    if (help && help.getAttribute('aria-hidden') === 'false') {
+        e.preventDefault();
+        e.stopPropagation();
+        hideHelp();
+    }
+});
 function syncUI(el) {
     el.checked ? el.parentElement.classList.add('active') : el.parentElement.classList.remove('active');
     // 更新全选按钮状态
@@ -171,14 +242,23 @@ function saveCustomGroups(arr) { localStorage.setItem('customGroups', JSON.strin
 
 // 注意：自定义组与内置组一并渲染于格式面板（见 initUI）。
 
+function setFormatFeedback(message, state) {
+    const feedback = document.getElementById('formatFeedback');
+    if (!feedback) return;
+    feedback.textContent = message || '';
+    if (state) feedback.dataset.state = state;
+    else delete feedback.dataset.state;
+}
+
 function addCustomGroup() {
     const nameEl = document.getElementById('customGroupName');
     const extsEl = document.getElementById('customGroupExts');
     if (!nameEl || !extsEl) return;
     const name = nameEl.value.trim();
     const raw = extsEl.value.trim();
-    if (!name) { alert('请填写组名'); return; }
-    if (!raw) { alert('请填写扩展名'); return; }
+    const t = LANGUAGES[currentLang] || {};
+    if (!name) { setFormatFeedback(t.groupNameRequired || '请输入分组名称。', 'error'); nameEl.focus(); return; }
+    if (!raw) { setFormatFeedback(t.extensionsRequired || '请输入至少一个扩展名。', 'error'); extsEl.focus(); return; }
     const parts = raw.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
     const exts = [];
     for (let p of parts) {
@@ -186,14 +266,15 @@ function addCustomGroup() {
         p = p.toLowerCase();
         if (/^\.[a-z0-9_-]+$/.test(p)) exts.push(p);
     }
-    if (!exts.length) { alert('没有有效的扩展名'); return; }
+    if (!exts.length) { setFormatFeedback(t.extensionsInvalid || '没有有效的扩展名，请检查输入格式。', 'error'); extsEl.focus(); return; }
     // create id
     const groups = loadCustomGroups();
     const id = 'cg_' + Date.now().toString(36) + '_' + Math.floor(Math.random()*1000).toString(36);
-    groups.push({ id, name, exts });
+    groups.push({ id, name, exts: Array.from(new Set(exts)) });
     saveCustomGroups(groups);
     nameEl.value = '';
     extsEl.value = '';
+    setFormatFeedback(t.groupAdded || '分组已添加。', 'success');
     initUI();
 }
 
@@ -207,18 +288,38 @@ function editCustomGroupDialog(id) {
     const groups = loadCustomGroups();
     const g = groups.find(x => x.id === id);
     if (!g) return;
-    showEditModal({ title: '编辑组', bodyHtml: `<label>组名<input id="modalGroupName" value="${escapeHtml(g.name)}"></label><label>扩展（逗号分隔）<textarea id="modalGroupExts">${escapeHtml(g.exts.map(e => e && e.startsWith('.') ? e.substring(1) : e).join(', '))}</textarea></label>`, onSave: () => {
-        const nameInp = document.getElementById('modalGroupName'); const extsInp = document.getElementById('modalGroupExts');
-        if (!nameInp || !extsInp) return false;
-        const newName = nameInp.value.trim(); if (!newName) return false;
-        const parts = extsInp.value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
-        const exts = [];
-        for (let p of parts) { if (!p.startsWith('.')) p = '.' + p; p = p.toLowerCase(); if (/^\.[a-z0-9_-]+$/.test(p)) exts.push(p); }
-        if (!exts.length) { alert('没有有效的扩展名，取消修改'); return false; }
-        g.name = newName; g.exts = exts; saveCustomGroups(groups); initUI(); return true;
-    }});
+    const t = LANGUAGES[currentLang] || {};
+    const groupNameLabel = escapeHtml(t.groupNameField || 'Group name');
+    const extensionsLabel = escapeHtml(t.extensionsField || 'Extensions');
+    showEditModal({
+        title: t.editGroup || 'Edit group',
+        bodyHtml: '<label>' + groupNameLabel + '<input id="modalGroupName" aria-label="' + groupNameLabel + '" value="' + escapeHtml(g.name) + '"></label>' +
+            '<label>' + extensionsLabel + '<textarea id="modalGroupExts" aria-label="' + extensionsLabel + '">' + escapeHtml(g.exts.map(e => e && e.startsWith('.') ? e.substring(1) : e).join(', ')) + '</textarea></label>',
+        onSave: () => {
+            const nameInp = document.getElementById('modalGroupName');
+            const extsInp = document.getElementById('modalGroupExts');
+            if (!nameInp || !extsInp) return false;
+            const newName = nameInp.value.trim();
+            if (!newName) return false;
+            const parts = extsInp.value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+            const exts = [];
+            for (let p of parts) {
+                if (!p.startsWith('.')) p = '.' + p;
+                p = p.toLowerCase();
+                if (/^\.[a-z0-9_-]+$/.test(p)) exts.push(p);
+            }
+            if (!exts.length) {
+                setEditModalError(t.extensionsInvalid || 'No valid extensions found.');
+                return false;
+            }
+            g.name = newName;
+            g.exts = exts;
+            saveCustomGroups(groups);
+            initUI();
+            return true;
+        }
+    });
 }
-
 function clearCustomGroups() {
     if (!confirm('确认清空所有自定义类型组？')) return;
     localStorage.removeItem('customGroups');
@@ -246,20 +347,30 @@ function removeExtFromBuiltIn(cat, ext) {
 
 function editExtInBuiltIn(cat, oldExt) {
     const initial = oldExt && oldExt.startsWith('.') ? oldExt.substring(1) : oldExt;
-    showEditModal({ title: '编辑扩展', bodyHtml: `<label>扩展名（无需前导 .）<input id="modalExtInput" value="${escapeHtml(initial)}"></label>`, onSave: () => {
-        const inp = document.getElementById('modalExtInput'); if (!inp) return false;
-        let p = inp.value.trim(); if (!p) return false;
-        if (!p.startsWith('.')) p = '.' + p;
-        p = p.toLowerCase();
-        if (!/^\.[a-z0-9_-]+$/.test(p)) { alert('扩展名格式不合法'); return false; }
-        const o = ensureOverrideForCategory(cat);
-        o[cat] = o[cat].map(e => e === oldExt ? p : e);
-        saveGroupOverrides(o);
-        initUI();
-        return true;
-    }});
+    const t = LANGUAGES[currentLang] || {};
+    const label = escapeHtml(t.extensionField || 'Extension');
+    showEditModal({
+        title: t.editExtension || 'Edit extension',
+        bodyHtml: '<label>' + label + '<input id="modalExtInput" aria-label="' + label + '" value="' + escapeHtml(initial) + '"></label>',
+        onSave: () => {
+            const inp = document.getElementById('modalExtInput');
+            if (!inp) return false;
+            let p = inp.value.trim();
+            if (!p) return false;
+            if (!p.startsWith('.')) p = '.' + p;
+            p = p.toLowerCase();
+            if (!/^\.[a-z0-9_-]+$/.test(p)) {
+                setEditModalError(t.extensionsInvalid || 'Invalid extension format.');
+                return false;
+            }
+            const o = ensureOverrideForCategory(cat);
+            o[cat] = o[cat].map(e => e === oldExt ? p : e);
+            saveGroupOverrides(o);
+            initUI();
+            return true;
+        }
+    });
 }
-
 function addExtToBuiltIn(cat, raw) {
     if (!raw || !raw.trim()) return;
     const parts = raw.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
@@ -293,27 +404,50 @@ window.applyTheme = applyTheme;
 window.escapeHtml = escapeHtml;
 
 // 内联编辑弹窗辅助
-function showEditModal({title, bodyHtml, onSave}) {
-    const backdrop = document.getElementById('editModalBackdrop');
-    const body = document.getElementById('editModalBody');
-    const titleEl = document.getElementById('editModalTitle');
-    if (!backdrop || !body || !titleEl) return;
-    titleEl.innerText = title || '编辑';
-    body.innerHTML = bodyHtml || '';
-    backdrop.setAttribute('aria-hidden','false');
-    const saveBtn = document.getElementById('editModalSave');
-    const cancelBtn = document.getElementById('editModalCancel');
-    const cleanup = () => { saveBtn.removeEventListener('click', onSaveHandler); cancelBtn.removeEventListener('click', onCancel); backdrop.setAttribute('aria-hidden','true'); };
-    const onSaveHandler = () => { try { const ok = !!onSave(); if (ok) cleanup(); } catch(e) { console.error(e); } };
-    const onCancel = () => { backdrop.setAttribute('aria-hidden','true'); cleanup(); };
-    saveBtn.addEventListener('click', onSaveHandler);
-    cancelBtn.addEventListener('click', onCancel);
-    // focus first input
-    setTimeout(() => { const first = body.querySelector('input, textarea'); if (first) first.focus(); }, 10);
+function setEditModalError(message) {
+    const errorEl = document.getElementById('editModalError');
+    if (errorEl) errorEl.textContent = message || '';
 }
 
-function hideEditModal() { const backdrop = document.getElementById('editModalBackdrop'); if (backdrop) backdrop.setAttribute('aria-hidden','true'); }
+function showEditModal({title, bodyHtml, onSave}) {
+    const backdrop = document.getElementById('editModalBackdrop');
+    const modal = backdrop ? backdrop.querySelector('.edit-modal') : null;
+    const body = document.getElementById('editModalBody');
+    const titleEl = document.getElementById('editModalTitle');
+    if (!backdrop || !modal || !body || !titleEl) return;
+    titleEl.innerText = title || '编辑';
+    body.innerHTML = bodyHtml || '';
+    setEditModalError('');
+    const saveBtn = document.getElementById('editModalSave');
+    const cancelBtn = document.getElementById('editModalCancel');
+    const closeBtn = document.getElementById('closeEditBtn');
+    const opener = document.activeElement;
+    const cleanup = () => {
+        saveBtn.removeEventListener('click', onSaveHandler);
+        cancelBtn.removeEventListener('click', onCancel);
+        if (backdrop.__assetFinderClose === cleanup) backdrop.__assetFinderClose = null;
+        backdrop.setAttribute('aria-hidden','true');
+        closeModalA11y(backdrop, modal);
+    };
+    const onSaveHandler = () => { try { const ok = !!onSave(); if (ok) cleanup(); else { const errorEl = document.getElementById('editModalError'); if (errorEl && !errorEl.textContent) errorEl.textContent = (LANGUAGES[currentLang] || {}).editValidation || 'Please check the highlighted fields.'; } } catch(e) { console.error(e); } };
+    const onCancel = () => cleanup();
+    backdrop.__assetFinderClose = cleanup;
+    bindOnce(closeBtn, 'click', hideEditModal, 'closeEditModal');
+    saveBtn.addEventListener('click', onSaveHandler);
+    cancelBtn.addEventListener('click', onCancel);
+    backdrop.setAttribute('aria-hidden','false');
+    openModalA11y(backdrop, modal, opener, 'input, textarea');
+}
 
+function hideEditModal() {
+    const backdrop = document.getElementById('editModalBackdrop');
+    if (!backdrop) return;
+    if (typeof backdrop.__assetFinderClose === 'function') backdrop.__assetFinderClose();
+    else {
+        backdrop.setAttribute('aria-hidden','true');
+        closeModalA11y(backdrop, backdrop.querySelector('.edit-modal'));
+    }
+}
 // Remove an extension from a group
 function removeExtFromGroup(id, ext) {
     const groups = loadCustomGroups();
@@ -326,25 +460,33 @@ function removeExtFromGroup(id, ext) {
 
 // Edit an extension in a group (prompt)
 function editExtInGroup(id, oldExt) {
-    // show inline modal to edit extension (no prompt)
     const initial = oldExt && oldExt.startsWith('.') ? oldExt.substring(1) : oldExt;
-    showEditModal({ title: '编辑扩展', bodyHtml: `<label>扩展名（无需前导 .）<input id="modalExtInput" value="${escapeHtml(initial)}"></label>`, onSave: () => {
-        const inp = document.getElementById('modalExtInput'); if (!inp) return false;
-        let p = inp.value.trim(); if (!p) return false;
-        if (!p.startsWith('.')) p = '.' + p;
-        p = p.toLowerCase();
-        if (!/^\.[a-z0-9_-]+$/.test(p)) { alert('扩展名格式不合法'); return false; }
-        const groups = loadCustomGroups();
-        const g = groups.find(x => x.id === id);
-        if (!g) return false;
-        g.exts = g.exts.map(e => e === oldExt ? p : e);
-        saveCustomGroups(groups);
-        initUI();
-        return true;
-    }});
+    const t = LANGUAGES[currentLang] || {};
+    const label = escapeHtml(t.extensionField || 'Extension');
+    showEditModal({
+        title: t.editExtension || 'Edit extension',
+        bodyHtml: '<label>' + label + '<input id="modalExtInput" aria-label="' + label + '" value="' + escapeHtml(initial) + '"></label>',
+        onSave: () => {
+            const inp = document.getElementById('modalExtInput');
+            if (!inp) return false;
+            let p = inp.value.trim();
+            if (!p) return false;
+            if (!p.startsWith('.')) p = '.' + p;
+            p = p.toLowerCase();
+            if (!/^\.[a-z0-9_-]+$/.test(p)) {
+                setEditModalError(t.extensionsInvalid || 'Invalid extension format.');
+                return false;
+            }
+            const groups = loadCustomGroups();
+            const g = groups.find(x => x.id === id);
+            if (!g) return false;
+            g.exts = g.exts.map(e => e === oldExt ? p : e);
+            saveCustomGroups(groups);
+            initUI();
+            return true;
+        }
+    });
 }
-
-// Add extension(s) to a group (supports comma separated), up to 8 per group
 function addExtToGroup(id, raw) {
     if (!raw || !raw.trim()) return;
     const parts = raw.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
@@ -373,10 +515,17 @@ function updateRunBtnState() {
     if (!btn) return;
     const inputEl = document.getElementById('inputText');
     const hasInput = inputEl && inputEl.value && inputEl.value.trim().length > 0;
-    // require: database indexed, at least one required matching mode selected, and input list not empty
+    const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
+    let reason = t.run || 'Run check';
+    if (importTask) reason = t.runBusyImport || 'Indexing is in progress';
+    else if (searchTask) reason = t.runBusySearch || 'A check is in progress';
+    else if (!(db && db.length > 0)) reason = t.runNeedsIndex || 'Import a project folder first';
+    else if (!isMatchingModeSelected()) reason = t.runNeedsMode || 'Choose a filename match mode';
+    else if (!hasInput) reason = t.runNeedsInput || 'Paste a checklist first';
     btn.disabled = !!importTask || !!searchTask || !(db && db.length > 0 && isMatchingModeSelected() && hasInput);
+    btn.title = reason;
+    btn.setAttribute('aria-label', t.run || 'Run check');
 }
-
 function clampPercent(value) {
     return Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
 }
@@ -470,13 +619,13 @@ function updateProgress(percent, show = true) {
     wrap.style.display = show ? 'block' : 'none';
     wrap.setAttribute('aria-hidden', show ? 'false' : 'true');
     wrap.setAttribute('aria-valuenow', String(Math.round(value)));
-    fill.style.width = value + '%';
+    fill.style.transform = 'scaleX(' + (value / 100) + ')';
 }
 
 function updateChooseProgress(percent, done = 0, total = 0) {
     const btn = document.getElementById('chooseDirBtn'); if (!btn) return;
     const value = clampPercent(percent);
-    const fill = btn.querySelector('.choose-progress-fill'); if (fill) fill.style.width = value + '%';
+    const fill = btn.querySelector('.choose-progress-fill'); if (fill) fill.style.transform = 'scaleX(' + (value / 100) + ')';
     const status = btn.querySelector('.choose-status'); if (status) {
         const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
         status.innerText = typeof t.chooseIndexingShort === 'function'
@@ -516,8 +665,8 @@ function setChooseReady(total) {
     }
     const fill = btn.querySelector('.choose-progress-fill');
     if (fill) {
-        fill.style.width = '100%';
-        setTimeout(() => { fill.style.opacity = '0'; fill.style.width = '0%'; }, 1400);
+        fill.style.transform = 'scaleX(1)';
+        setTimeout(() => { fill.style.opacity = '0'; fill.style.transform = 'scaleX(0)'; }, 1400);
     }
 }
 
@@ -543,6 +692,7 @@ function setImportStatus(state) {
     const rate = elapsed ? processedBytes / (elapsed / 1000) : 0;
     const etaMs = phase === 'indexing' && done > 0 && total > done ? (elapsed / done) * (total - done) : (phase === 'done' ? 0 : NaN);
     status.hidden = false;
+    status.dataset.phase = phase;
     if (label) {
         if (phase === 'done') label.innerHTML = t.importReady || 'Index ready';
         else if (phase === 'cancelled') label.innerHTML = t.importCancelled || 'Index cancelled';
@@ -550,10 +700,10 @@ function setImportStatus(state) {
         else label.innerHTML = typeof t.importing === 'function' ? t.importing(done.toLocaleString(), total.toLocaleString()) : 'Indexing files';
     }
     if (percentEl) percentEl.innerText = Math.round(percent) + '%';
-    if (fill) fill.style.width = percent + '%';
+    if (fill) fill.style.transform = 'scaleX(' + (percent / 100) + ')';
     if (bar) {
         bar.setAttribute('aria-valuenow', String(Math.round(percent)));
-        bar.setAttribute('aria-valuetext', Math.round(percent) + '% - ' + done + ' / ' + total);
+        bar.setAttribute('aria-valuetext', currentLang === 'zh' ? Math.round(percent) + '%，已处理 ' + done + ' / ' + total + ' 个文件' : Math.round(percent) + '%, ' + done + ' of ' + total + ' files processed');
     }
     if (meta) {
         meta.innerText = typeof t.importMeta === 'function'
@@ -565,7 +715,7 @@ function setImportStatus(state) {
             ? (typeof t.importEta === 'function' ? t.importEta(formatDuration(etaMs), formatRate(rate)) : 'ETA ' + formatDuration(etaMs))
             : (phase === 'done' && typeof t.importElapsed === 'function' ? t.importElapsed(formatDuration(elapsed)) : '');
     }
-    if (cancel) cancel.hidden = phase !== 'indexing';
+    if (cancel) { cancel.hidden = phase !== 'indexing'; cancel.innerText = t.cancel || 'Cancel'; cancel.title = t.cancel || 'Cancel'; cancel.setAttribute('aria-label', t.cancel || 'Cancel'); }
 }
 
 function updateImportProgress(done, total, totalBytes, processedBytes, startTime) {
@@ -586,8 +736,8 @@ function updateSearchProgress(percent, show = true, done = 0, total = 0) {
         wrap.style.display = 'block';
         wrap.setAttribute('aria-hidden', 'false');
         wrap.setAttribute('aria-valuenow', String(Math.round(value)));
-        wrap.setAttribute('aria-valuetext', Math.round(value) + '% - ' + done + ' / ' + total);
-        fill.style.width = value + '%';
+        wrap.setAttribute('aria-valuetext', currentLang === 'zh' ? Math.round(value) + '%，已比较 ' + done + ' / ' + total : Math.round(value) + '%, ' + done + ' of ' + total + ' comparisons processed');
+        fill.style.transform = 'scaleX(' + (value / 100) + ')';
         if (info && typeof LANGUAGES !== 'undefined' && LANGUAGES[currentLang] && typeof LANGUAGES[currentLang].searching === 'function') {
             info.innerHTML = LANGUAGES[currentLang].searching(value, done, total);
         }
@@ -596,7 +746,7 @@ function updateSearchProgress(percent, show = true, done = 0, total = 0) {
         wrap.style.display = 'none';
         wrap.setAttribute('aria-hidden', 'true');
         wrap.setAttribute('aria-valuenow', String(Math.round(value)));
-        fill.style.width = value + '%';
+        fill.style.transform = 'scaleX(' + (value / 100) + ')';
     }
 }
 
@@ -646,7 +796,7 @@ async function processFiles(filesArr) {
     const indexed = [];
     let processedBytes = 0;
     let done = 0;
-    if (chooseBtn) chooseBtn.classList.add('busy');
+    if (chooseBtn) { chooseBtn.classList.add('busy'); chooseBtn.disabled = true; chooseBtn.setAttribute('aria-busy','true'); }
     updateImportProgress(0, total, totalBytes, 0, startTime);
     try {
         for (let i = 0; i < total; i += INDEX_CHUNK_SIZE) {
@@ -691,7 +841,7 @@ async function processFiles(filesArr) {
         return false;
     } finally {
         importTask = null;
-        if (chooseBtn) chooseBtn.classList.remove('busy');
+        if (chooseBtn) { chooseBtn.classList.remove('busy'); chooseBtn.disabled = false; chooseBtn.setAttribute('aria-busy','false'); }
         updateRunBtnState();
     }
 }
@@ -701,7 +851,7 @@ async function processFiles(filesArr) {
 function showCategory(catId) {
     currentCategoryId = catId;
     // mark active in sidebar
-    document.querySelectorAll('.format-sidebar .cat-item').forEach(el => el.classList.toggle('active', el.dataset.id === catId));
+    document.querySelectorAll('.format-sidebar .cat-item').forEach(el => { const active = el.dataset.id === catId; el.classList.toggle('active', active); el.setAttribute('aria-pressed', active ? 'true' : 'false'); });
     renderCategoryGrid(catId);
     // update category controls (edit / delete for custom groups)
     const controls = document.getElementById('categoryControls');
@@ -711,8 +861,11 @@ function showCategory(catId) {
     const grp = groups.find(g => g.id === catId);
     if (!grp) return;
     if (grp.isCustom) {
-        const editBtn = document.createElement('button'); editBtn.title = '编辑组'; editBtn.setAttribute('aria-label','编辑组'); editBtn.innerHTML = `<i class="fa-solid fa-pen" aria-hidden="true"></i>`; editBtn.addEventListener('click', (e) => { e.preventDefault(); editCustomGroupDialog(catId); });
-        const delBtn = document.createElement('button'); delBtn.title = '删除组'; delBtn.setAttribute('aria-label','删除组'); delBtn.innerHTML = `<i class="fa-solid fa-trash" aria-hidden="true"></i>`; delBtn.addEventListener('click', (e) => { e.preventDefault(); if (confirm('确认删除该自定义组？')) removeCustomGroup(catId); });
+        const t = LANGUAGES[currentLang] || {};
+        const editLabel = t.editGroup || 'Edit group';
+        const deleteLabel = t.deleteGroup || 'Delete group';
+        const editBtn = document.createElement('button'); editBtn.type = 'button'; editBtn.title = editLabel; editBtn.setAttribute('aria-label', editLabel); editBtn.innerHTML = '<i class="fa-solid fa-pen" aria-hidden="true"></i>'; editBtn.addEventListener('click', (e) => { e.preventDefault(); editCustomGroupDialog(catId); });
+        const delBtn = document.createElement('button'); delBtn.type = 'button'; delBtn.title = deleteLabel; delBtn.setAttribute('aria-label', deleteLabel); delBtn.innerHTML = '<i class="fa-solid fa-trash" aria-hidden="true"></i>'; delBtn.addEventListener('click', (e) => { e.preventDefault(); if (confirm(t.confirmDeleteGroup || 'Delete this custom group?')) removeCustomGroup(catId); });
         controls.appendChild(editBtn); controls.appendChild(delBtn);
     }
 }
@@ -739,10 +892,10 @@ function renderCategoryGrid(catId) {
         const results = Array.from(map.entries()).map(([ext, groupName]) => ({ ext, groupName, label: (ext && ext.startsWith('.')) ? ext.substring(1) : ext }));
         results.sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
         results.forEach(r => {
-            const tag = document.createElement('div');
+            const tag = document.createElement('button'); tag.type = 'button';
             tag.className = 'format-tag' + (selectedExts.has(r.ext) ? ' active' : '');
-            tag.dataset.ext = r.ext;
-            tag.innerHTML = `<span>${escapeHtml(r.label)}</span><small style="margin-left:8px;color:#9b9b9b">${escapeHtml(r.groupName)}</small>`;
+            tag.dataset.ext = r.ext; tag.setAttribute('aria-pressed', selectedExts.has(r.ext) ? 'true' : 'false');
+            tag.innerHTML = `<span>${escapeHtml(r.label)}</span><small class="format-tag-group">${escapeHtml(r.groupName)}</small>`;
             tag.addEventListener('click', () => { toggleFormat(r.ext, tag); });
             grid.appendChild(tag);
         });
@@ -759,9 +912,9 @@ function renderCategoryGrid(catId) {
         });
         sortedExts.forEach(ext => {
             const label = ext && ext.startsWith('.') ? ext.substring(1) : ext;
-            const tag = document.createElement('div');
+            const tag = document.createElement('button'); tag.type = 'button';
             tag.className = 'format-tag' + (selectedExts.has(ext) ? ' active' : '');
-            tag.dataset.ext = ext;
+            tag.dataset.ext = ext; tag.setAttribute('aria-pressed', selectedExts.has(ext) ? 'true' : 'false');
             tag.innerHTML = `<span>${escapeHtml(label)}</span>`;
             tag.addEventListener('click', () => { toggleFormat(ext, tag); });
             grid.appendChild(tag);
@@ -769,34 +922,41 @@ function renderCategoryGrid(catId) {
         const controls = document.getElementById('categoryControls'); if (controls) controls.setAttribute('aria-hidden', 'false');
     }
 
+    if (!grid.querySelector('.format-tag')) {
+        const empty = document.createElement('div');
+        empty.className = 'format-empty';
+        const t = LANGUAGES[currentLang] || {};
+        empty.textContent = search ? (t.noFormatsFound || 'No matching resource formats found.') : (t.noFormatsInGroup || 'This group does not contain any formats yet.');
+        empty.setAttribute('role', 'status');
+        grid.appendChild(empty);
+    }
     updateAllBtnState();
 }
 
 function toggleFormat(ext, el) {
     if (selectedExts.has(ext)) selectedExts.delete(ext); else selectedExts.add(ext);
-    if (el) el.classList.toggle('active', selectedExts.has(ext));
+    if (el) { el.classList.toggle('active', selectedExts.has(ext)); el.setAttribute('aria-pressed', selectedExts.has(ext) ? 'true' : 'false'); }
     updateAllBtnState();
     updateFormatButtonText();
 }
 
 function positionFormatModal() {
-    const btn = document.getElementById('openFormatBtn'); const modal = document.querySelector('.format-modal'); const back = document.getElementById('formatModalBackdrop');
+    const btn = document.getElementById('openFormatBtn');
+    const modal = document.querySelector('.format-modal');
+    const back = document.getElementById('formatModalBackdrop');
     if (!btn || !modal || !back || back.getAttribute('aria-hidden') === 'true') return;
     const rect = btn.getBoundingClientRect();
     const mw = modal.offsetWidth || 560;
     const vw = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
-    let left = rect.left + window.scrollX;
-    // keep modal within viewport
+    let left = rect.left;
     if (left + mw > vw - 12) left = Math.max(12, vw - mw - 12);
-    let top = rect.bottom + window.scrollY + 8;
-    // if not enough space below, show above
+    let top = rect.bottom + 8;
     const mh = modal.offsetHeight || 320;
-    if (top + mh > window.scrollY + (window.innerHeight || document.documentElement.clientHeight)) {
-        top = rect.top + window.scrollY - mh - 8;
-    }
-    modal.style.left = left + 'px'; modal.style.top = top + 'px';
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    if (top + mh > vh - 12) top = Math.max(12, rect.top - mh - 8);
+    modal.style.left = left + 'px';
+    modal.style.top = top + 'px';
 }
-
 // 帮助弹窗定位：以帮助按钮为锚点（与格式弹窗相同定位逻辑）
 function positionHelpModal() {
     const btn = document.getElementById('helpBtn'); const modal = document.querySelector('.help-modal'); const back = document.getElementById('helpModalBackdrop');
@@ -820,12 +980,15 @@ function updateFormatButtonText() {
     const btn = document.getElementById('openFormatBtn'); if (!btn) return;
     const t = LANGUAGES[currentLang] || {};
     const sel = Array.from(selectedExts).map(s => s && s.startsWith('.') ? s.substring(1) : s).filter(Boolean);
-    if (!sel.length) { btn.innerText = t.filter || '文件格式筛选'; return; }
+    if (!sel.length) { btn.innerText = t.filter || '资源格式筛选'; btn.setAttribute('aria-label', t.filter || 'Resource format filters'); btn.title = t.filter || 'Resource format filters'; return; }
     const visible = sel.slice(0,3);
     const more = sel.length - visible.length;
     const pills = visible.map(l => `<span class="fmt-pill">${escapeHtml(l)}</span>`).join('');
     const moreHtml = more > 0 ? `<span class="fmt-more">+${more}</span>` : '';
     btn.innerHTML = `<span class="fmt-list">${pills}${moreHtml}</span>`;
+    const selectedLabel = currentLang === 'zh' ? `已选择 ${sel.length} 种格式` : `${sel.length} formats selected`;
+    btn.setAttribute('aria-label', selectedLabel);
+    btn.title = selectedLabel;
 }
 
 function toggleAll(state) {
@@ -835,7 +998,7 @@ function toggleAll(state) {
         const allSelected = tags.length > 0 && tags.every(t => t.classList.contains('active'));
         state = !allSelected;
     }
-    tags.forEach(t => { const ext = t.dataset.ext; if (state) selectedExts.add(ext); else selectedExts.delete(ext); t.classList.toggle('active', state); });
+    tags.forEach(t => { const ext = t.dataset.ext; if (state) selectedExts.add(ext); else selectedExts.delete(ext); t.classList.toggle('active', state); t.setAttribute('aria-pressed', state ? 'true' : 'false'); });
     updateAllBtnState();
     updateFormatButtonText();
 }
@@ -843,11 +1006,28 @@ function toggleAll(state) {
 function updateAllBtnState() {
     const allBtn = document.getElementById('allBtn'); if (!allBtn) return;
     const tags = Array.from(document.querySelectorAll('#formatGridWrap .format-tag'));
-    const allSelected = tags.length > 0 && tags.every(t => t.classList.contains('active'));
-    if (allSelected) { allBtn.classList.add('active'); allBtn.innerText = (LANGUAGES[currentLang] && LANGUAGES[currentLang].none) ? LANGUAGES[currentLang].none : 'None'; }
-    else { allBtn.classList.remove('active'); allBtn.innerText = (LANGUAGES[currentLang] && LANGUAGES[currentLang].all) ? LANGUAGES[currentLang].all : 'All'; }
+    const t = LANGUAGES[currentLang] || {};
+    if (!tags.length) {
+        allBtn.disabled = true;
+        allBtn.classList.remove('active');
+        allBtn.innerText = t.all || 'All';
+        allBtn.setAttribute('aria-label', t.noFormatsAvailable || 'No formats are available to select.');
+        allBtn.title = allBtn.getAttribute('aria-label');
+        return;
+    }
+    allBtn.disabled = false;
+    const allSelected = tags.every(t => t.classList.contains('active'));
+    if (allSelected) {
+        allBtn.classList.add('active');
+        allBtn.innerText = t.none || 'None';
+        allBtn.setAttribute('aria-label', currentLang === 'zh' ? '清除当前列表选择' : 'Clear current list selection');
+    } else {
+        allBtn.classList.remove('active');
+        allBtn.innerText = t.all || 'All';
+        allBtn.setAttribute('aria-label', currentLang === 'zh' ? '选择当前列表全部格式' : 'Select all formats in current list');
+    }
+    allBtn.title = allBtn.getAttribute('aria-label');
 }
-
 
 // 注意：已禁用拖放导入；请使用隐藏的文件输入(`#dirInput`) 并调用 `handleImport()`。
 async function handleSearch() {
@@ -874,6 +1054,12 @@ async function handleSearch() {
             path: match[2].trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
         };
     }).filter(Boolean);
+    if (!queryLines.length) {
+        if (inputEl) inputEl.setAttribute('aria-invalid', 'true');
+        if (info) info.innerText = t.invalidInput || 'No valid records found. Use one line per item: file name + relative path.';
+        updateRunBtnState();
+        return false;
+    }
     const modes = new Set(Array.from(document.querySelectorAll('.required-chk:checked')).map(el => el.value));
     const normalizedSelectedExts = new Set(Array.from(selectedExts).map(ext => ext.startsWith('.') ? ext : '.' + ext));
     const normalize = value => {
@@ -902,6 +1088,8 @@ async function handleSearch() {
     if (cancelBtn) {
         cancelBtn.hidden = false;
         cancelBtn.innerText = t.cancel || 'Cancel';
+        cancelBtn.title = t.cancel || 'Cancel';
+        cancelBtn.setAttribute('aria-label', t.cancel || 'Cancel');
     }
     updateSearchProgress(0, true, 0, totalSteps);
     try {
@@ -1129,9 +1317,9 @@ async function showHelp() {
     wrap.style.display = 'flex';
     const modal = wrap.querySelector('.help-modal');
     if (modal) {
-        // ensure modal itself is visible
+        // ensure modal itself is visible and keyboard focus stays inside it
         modal.style.display = '';
-        modal.focus();
+        openModalA11y(wrap, modal, helpButton, '#closeHelpBtn');
     }
     // attach global pointerdown listener to close when clicking outside modal
     if (!window._helpPointerDown) {
@@ -1151,6 +1339,7 @@ function hideHelp() {
     // ensure backdrop is hidden visually too
     wrap.style.display = 'none';
     const modal = wrap.querySelector('.help-modal');
+    if (modal) closeModalA11y(wrap, modal);
     if (modal) {
         modal.style.position = '';
         modal.style.left = '';
@@ -1173,10 +1362,12 @@ function hideHelp() {
 // 绑定帮助按钮与快捷键
 window.addEventListener('DOMContentLoaded', () => {
     const hb = document.getElementById('helpBtn'); if (hb) hb.addEventListener('click', showHelp);
+    const closeHelpBtn = document.getElementById('closeHelpBtn'); bindOnce(closeHelpBtn, 'click', hideHelp, 'closeHelpModal');
     const wrap = document.getElementById('helpModalBackdrop'); if (wrap) {
         wrap.addEventListener('click', (e) => { if (e.target === wrap) hideHelp(); });
         // Ensure help backdrop is hidden on load (defensive in case some styles/attributes changed)
         wrap.setAttribute('aria-hidden','true');
+        const editBackdrop = document.getElementById('editModalBackdrop'); if (editBackdrop) bindOnce(editBackdrop, 'click', (e) => { if (e.target === editBackdrop) hideEditModal(); }, 'editBackdrop');
         // enforce hidden state to avoid any visual flash or leftover inline styles
         wrap.style.display = 'none';
         wrap.style.position = '';
@@ -1190,7 +1381,7 @@ window.addEventListener('DOMContentLoaded', () => {
             modal.style.display = 'none';
         }
     }
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideHelp(); });
+
 });
 
 // 初始化行号计数器（确保在 DOM 完全加载后再运行）

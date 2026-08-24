@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- 思源黑体（Noto Sans SC 为同源网页字体回退） -->
+    <!-- impeccable-disable single-font: 工具型界面有意统一使用单一 UI 字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap">
     <title>Asset Finder Web</title>
     <link rel="stylesheet" href="style.css">
     <!-- 引入 Font Awesome 图标库 -->
@@ -42,7 +47,7 @@
                     <button class="help-btn header-action" id="helpBtn" title="资源检索与核对指南" aria-label="资源检索与核对指南" aria-expanded="false">
                         <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
                     </button>
-                    <button class="lang-switch-btn header-action" id="langSwitch" onclick="switchLang()" title="切换语言" aria-label="切换语言">
+                    <button class="lang-switch-btn header-action" id="langSwitch" onclick="switchLang()" title="切换到英文" aria-label="切换到英文">
                         <i class="fa-solid fa-language" aria-hidden="true"></i>
                     </button>
                     <a id="githubBtn" class="github-btn header-action" href="https://github.com/cloud-oc/AssetFinderWeb" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub repository">
@@ -58,13 +63,13 @@
 
             <!-- 选择行：包含选择文件夹按钮和格式筛选按钮 -->
             <div class="choose-row">
-                <button id="chooseDirBtn" class="btn-choose small" type="button" aria-live="polite">
+                <button id="chooseDirBtn" class="btn-choose small" type="button" aria-live="polite" aria-controls="importStatus" aria-busy="false">
                     <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
                     <span class="choose-label">选择项目目录</span>
                     <span class="choose-status" aria-live="polite" role="status" aria-atomic="true"></span>
                     <span class="choose-progress" aria-hidden="true"><span class="choose-progress-fill"></span></span>
                 </button>
-                <button id="openFormatBtn" class="btn-format" type="button">资源格式筛选</button>
+                <button id="openFormatBtn" class="btn-format" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="formatModalBackdrop">资源格式筛选</button>
                 <input type="file" id="dirInput" webkitdirectory directory multiple style="display:none" onchange="handleImport(this)">
             </div>
 
@@ -103,8 +108,7 @@
                     <label class="mode-item" id="ignoreLabel"><input type="checkbox" id="ignoreSpaces"></label>
                 </div>
             </div>
-
-
+            <p class="control-hint" id="logicHint"></p>
         </div>
         <div class="card">
             <div class="section-title" id="inputTitle"></div>
@@ -112,7 +116,7 @@
             <div class="editor-row">
                 <div class="code-wrapper">
                     <div class="gutter" id="inputGutter"></div>
-                    <textarea id="inputText" wrap="off" placeholder="将排期或上传清单粘贴到这里&#10;文件名    相对/子路径&#10;Hero_Knight    Assets/Characters"></textarea>
+                    <textarea id="inputText" wrap="off" aria-labelledby="inputTitle" aria-describedby="inputHint" placeholder="将排期或上传清单粘贴到这里&#10;文件名    相对/子路径&#10;Hero_Knight    Assets/Characters"></textarea>
                 </div>
                 <button class="btn-run" id="runBtn" onclick="handleSearch()" disabled></button>
             </div>
@@ -122,23 +126,24 @@
             <div class="editor-row">
                 <div class="code-wrapper">
                     <div class="gutter" id="outputGutter"></div>
-                    <textarea id="outputText" wrap="off" readonly></textarea>
+                    <textarea id="outputText" wrap="off" readonly aria-labelledby="outputTitle" placeholder="搜索完成后，匹配到的资源会显示在这里"></textarea>
                 </div>
                 <button class="btn-dl" id="dlBtn" onclick="download()" disabled></button>
             </div>
             <div class="local-progress" id="searchProgressWrap" role="progressbar" aria-label="搜索进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-hidden="true"><div id="searchProgressFill"></div></div>
             <div class="status-bar">
-                <span id="outputInfo"></span>
+                <span id="outputInfo" role="status" aria-live="polite" aria-atomic="false"></span>
                 <button id="cancelSearchBtn" class="btn-cancel" type="button" hidden></button>
             </div>
         </div>
     </div>
 
     <!-- 格式弹窗（紧凑）- 默认隐藏（已移动到 body 层，避免被卡片裁剪） -->
-    <div class="format-modal-backdrop" id="formatModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="format-modal-backdrop" id="formatModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="formatModalTitle">
         <div class="format-modal" role="document" tabindex="-1">
             <div class="format-modal-header">
                 <strong id="formatModalTitle">资源格式筛选</strong>
+                <button id="closeFormatBtn" class="modal-close" type="button" aria-label="关闭格式筛选" title="关闭"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
             </div>
             <div class="format-modal-body">
                 <div class="format-panel small">
@@ -159,21 +164,24 @@
                     <input type="text" id="customGroupExts" placeholder="自定义文件扩展名（无需加.）" aria-label="Extensions comma separated">
                     <button id="addGroupBtn" type="button">添加组</button>
                 </div>
+                <p id="formatFeedback" class="format-feedback" role="status" aria-live="polite"></p>
             </div>
         </div>
     </div>
 
-    <div class="help-modal-backdrop" id="helpModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="help-modal-backdrop" id="helpModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="helpModalTitle">
         <div class="help-modal" role="document" tabindex="-1">
+            <div class="modal-header help-modal-header"><strong id="helpModalTitle">资源检索与核对指南</strong><button id="closeHelpBtn" class="modal-close" type="button" aria-label="关闭帮助" title="关闭"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
             <div class="modal-body" id="helpModalBody"></div>
         </div>
     </div>
 
     <!-- 内联编辑弹窗 -->
-    <div class="edit-modal-backdrop" id="editModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="edit-modal-backdrop" id="editModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="editModalTitle">
         <div class="edit-modal" role="document" tabindex="-1">
-            <div class="edit-modal-header"><strong id="editModalTitle">编辑</strong></div>
+            <div class="edit-modal-header"><strong id="editModalTitle">编辑</strong><button id="closeEditBtn" class="modal-close" type="button" aria-label="关闭编辑" title="关闭"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
             <div class="edit-modal-body" id="editModalBody"></div>
+            <p id="editModalError" class="modal-feedback" role="status" aria-live="polite"></p>
             <div class="edit-modal-actions">
                 <button id="editModalCancel" type="button">取消</button>
                 <button id="editModalSave" type="button">保存</button>
