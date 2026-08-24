@@ -16,6 +16,15 @@ let db = [];
 let selectedExts = new Set();
 let currentCategoryId = null;
 
+// Long-running task state. Work is intentionally chunked so the browser can paint and respond between batches.
+let importTask = null;
+let searchTask = null;
+let importViewState = null;
+let searchViewState = null;
+const INDEX_CHUNK_SIZE = 3000;
+const SEARCH_CHUNK_SIZE = 2000;
+const THEME_STORAGE_KEY = 'asset-finder-theme';
+
 function getAllGroups() {
     const list = [];
     const overrides = loadGroupOverrides();
@@ -278,6 +287,9 @@ window.handleImport = handleImport;
 window.handleSearch = handleSearch;
 window.download = download;
 window.updateProgress = updateProgress;
+window.cancelImport = cancelImport;
+window.cancelSearch = cancelSearch;
+window.applyTheme = applyTheme;
 window.escapeHtml = escapeHtml;
 
 // 内联编辑弹窗辅助
@@ -362,34 +374,132 @@ function updateRunBtnState() {
     const inputEl = document.getElementById('inputText');
     const hasInput = inputEl && inputEl.value && inputEl.value.trim().length > 0;
     // require: database indexed, at least one required matching mode selected, and input list not empty
-    btn.disabled = !(db && db.length > 0 && isMatchingModeSelected() && hasInput);
+    btn.disabled = !!importTask || !!searchTask || !(db && db.length > 0 && isMatchingModeSelected() && hasInput);
+}
+
+function clampPercent(value) {
+    return Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+}
+
+function formatBytes(bytes) {
+    const value = Math.max(0, Number(bytes) || 0);
+    if (value < 1024) return value + ' B';
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let size = value;
+    let index = -1;
+    do { size /= 1024; index += 1; } while (size >= 1024 && index < units.length - 1);
+    return size.toFixed(size >= 100 ? 0 : size >= 10 ? 1 : 2) + ' ' + units[index];
+}
+
+function formatDuration(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return '--';
+    const seconds = Math.max(0, Math.round(ms / 1000));
+    if (seconds < 1) return '<1s';
+    if (seconds < 60) return seconds + 's';
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    return minutes + 'm ' + String(remainder).padStart(2, '0') + 's';
+}
+
+function formatRate(bytesPerSecond) {
+    if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '--';
+    return formatBytes(bytesPerSecond) + '/s';
+}
+
+function yieldToBrowser() {
+    return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+function updateThemeButtonLabel() {
+    const root = document.documentElement;
+    const button = document.getElementById('themeToggle');
+    if (!button) return;
+    const isLight = root.dataset.theme === 'light';
+    const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
+    const label = isLight ? (t.themeToDark || 'Switch to dark theme') : (t.themeToLight || 'Switch to light theme');
+    const icon = button.querySelector('i');
+    if (icon) {
+        icon.classList.toggle('fa-sun', !isLight);
+        icon.classList.toggle('fa-moon', isLight);
+    }
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.dataset.theme = isLight ? 'light' : 'dark';
+}
+
+function getInitialTheme() {
+    try {
+        const saved = localStorage.getItem(THEME_STORAGE_KEY);
+        if (saved === 'light' || saved === 'dark') return saved;
+    } catch (e) { /* localStorage may be unavailable in private/file contexts */ }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(theme, persist = true) {
+    const next = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    document.documentElement.style.colorScheme = next;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', next === 'light' ? '#f4f7fb' : '#071018');
+    if (persist) {
+        try { localStorage.setItem(THEME_STORAGE_KEY, next); } catch (e) { /* ignore storage errors */ }
+    }
+    updateThemeButtonLabel();
+}
+
+function toggleTheme() {
+    const current = document.documentElement.dataset.theme || getInitialTheme();
+    applyTheme(current === 'light' ? 'dark' : 'light');
+}
+
+function initTheme() {
+    applyTheme(document.documentElement.dataset.theme || getInitialTheme(), false);
+    const button = document.getElementById('themeToggle');
+    if (button && !button.dataset.bound) {
+        button.addEventListener('click', toggleTheme);
+        button.dataset.bound = 'true';
+    }
 }
 
 function updateProgress(percent, show = true) {
     const wrap = document.getElementById('progressWrap');
     const fill = document.getElementById('progressFill');
+    if (!wrap || !fill) return;
+    const value = clampPercent(percent);
     wrap.style.display = show ? 'block' : 'none';
-    fill.style.width = percent + '%';
+    wrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+    wrap.setAttribute('aria-valuenow', String(Math.round(value)));
+    fill.style.width = value + '%';
 }
 
-function updateChooseProgress(percent) {
+function updateChooseProgress(percent, done = 0, total = 0) {
     const btn = document.getElementById('chooseDirBtn'); if (!btn) return;
-    const fill = btn.querySelector('.choose-progress-fill'); if (fill) fill.style.width = percent + '%';
+    const value = clampPercent(percent);
+    const fill = btn.querySelector('.choose-progress-fill'); if (fill) fill.style.width = value + '%';
     const status = btn.querySelector('.choose-status'); if (status) {
-        const short = (LANGUAGES[currentLang] && LANGUAGES[currentLang].chooseIndexingShort) ? LANGUAGES[currentLang].chooseIndexingShort(percent) : (`索引中 ${percent}%`);
-        status.innerText = short;
+        const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
+        status.innerText = typeof t.chooseIndexingShort === 'function'
+            ? t.chooseIndexingShort(value, done, total)
+            : ('Indexing ' + Math.round(value) + '%');
     }
+}
+
+function setChooseCancelled(done) {
+    const btn = document.getElementById('chooseDirBtn'); if (!btn) return;
+    const status = btn.querySelector('.choose-status');
+    const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
+    if (status) status.innerText = typeof t.chooseCancelled === 'function' ? t.chooseCancelled(done.toLocaleString()) : 'Cancelled';
 }
 
 function setChooseReady(total) {
     const btn = document.getElementById('chooseDirBtn'); if (!btn) return;
     const status = btn.querySelector('.choose-status');
     const label = btn.querySelector('.choose-label');
+    const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
     if (status) {
-        const ready = (LANGUAGES[currentLang] && LANGUAGES[currentLang].chooseReadyShort) ? LANGUAGES[currentLang].chooseReadyShort(total.toLocaleString()) : (`已索引 ${total} 个文件`);
+        const ready = typeof t.chooseReadyShort === 'function' ? t.chooseReadyShort(total.toLocaleString()) : ('Indexed ' + total + ' files');
         status.innerText = ready;
     }
-    // 索引完成时，将按钮主文本替换为已记录的文件夹名（如果有）
     if (label) {
         const folderName = btn.dataset.folderName;
         if (folderName) {
@@ -397,37 +507,113 @@ function setChooseReady(total) {
             btn.title = folderName;
             btn.setAttribute('aria-label', folderName);
         } else {
-            const defaultLabel = (LANGUAGES[currentLang] && LANGUAGES[currentLang].chooseFolder) ? LANGUAGES[currentLang].chooseFolder : '选择资产文件夹';
+            const defaultLabel = t.chooseFolder || 'Choose folder';
             label.innerText = defaultLabel;
             btn.title = defaultLabel;
             btn.setAttribute('aria-label', defaultLabel);
         }
     }
-    const fill = btn.querySelector('.choose-progress-fill'); if (fill) { fill.style.width = '100%'; }
-    // fade out progress fill after short delay
-    setTimeout(() => { if (fill) { fill.style.opacity = '0'; fill.style.width = '0%'; } }, 1400);
+    const fill = btn.querySelector('.choose-progress-fill');
+    if (fill) {
+        fill.style.width = '100%';
+        setTimeout(() => { fill.style.opacity = '0'; fill.style.width = '0%'; }, 1400);
+    }
 }
 
-function updateSearchProgress(percent, show = true) {
+function setImportStatus(state) {
+    const status = document.getElementById('importStatus');
+    if (!status) return;
+    importViewState = Object.assign({}, state);
+    const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
+    const phase = state.phase || 'indexing';
+    const total = Math.max(0, Number(state.total) || 0);
+    const done = Math.max(0, Math.min(total || Number.MAX_SAFE_INTEGER, Number(state.done) || 0));
+    const processedBytes = Math.max(0, Number(state.processedBytes) || 0);
+    const totalBytes = Math.max(0, Number(state.totalBytes) || 0);
+    const percent = phase === 'done' ? 100 : clampPercent(state.percent == null ? (total ? done / total * 100 : 0) : state.percent);
+    const label = document.getElementById('importStatusLabel');
+    const percentEl = document.getElementById('importStatusPercent');
+    const meta = document.getElementById('importProgressMeta');
+    const eta = document.getElementById('importProgressEta');
+    const bar = document.getElementById('importProgressBar');
+    const fill = document.getElementById('importProgressFill');
+    const cancel = document.getElementById('cancelImportBtn');
+    const elapsed = state.startTime ? Math.max(1, (state.endTime || performance.now()) - state.startTime) : 0;
+    const rate = elapsed ? processedBytes / (elapsed / 1000) : 0;
+    const etaMs = phase === 'indexing' && done > 0 && total > done ? (elapsed / done) * (total - done) : (phase === 'done' ? 0 : NaN);
+    status.hidden = false;
+    if (label) {
+        if (phase === 'done') label.innerHTML = t.importReady || 'Index ready';
+        else if (phase === 'cancelled') label.innerHTML = t.importCancelled || 'Index cancelled';
+        else if (phase === 'error') label.innerHTML = t.importError || 'Index failed';
+        else label.innerHTML = typeof t.importing === 'function' ? t.importing(done.toLocaleString(), total.toLocaleString()) : 'Indexing files';
+    }
+    if (percentEl) percentEl.innerText = Math.round(percent) + '%';
+    if (fill) fill.style.width = percent + '%';
+    if (bar) {
+        bar.setAttribute('aria-valuenow', String(Math.round(percent)));
+        bar.setAttribute('aria-valuetext', Math.round(percent) + '% - ' + done + ' / ' + total);
+    }
+    if (meta) {
+        meta.innerText = typeof t.importMeta === 'function'
+            ? t.importMeta(done.toLocaleString(), total.toLocaleString(), formatBytes(processedBytes), formatBytes(totalBytes), formatRate(rate))
+            : (done + ' / ' + total + ' files · ' + formatBytes(processedBytes) + ' / ' + formatBytes(totalBytes));
+    }
+    if (eta) {
+        eta.innerText = phase === 'indexing'
+            ? (typeof t.importEta === 'function' ? t.importEta(formatDuration(etaMs), formatRate(rate)) : 'ETA ' + formatDuration(etaMs))
+            : (phase === 'done' && typeof t.importElapsed === 'function' ? t.importElapsed(formatDuration(elapsed)) : '');
+    }
+    if (cancel) cancel.hidden = phase !== 'indexing';
+}
+
+function updateImportProgress(done, total, totalBytes, processedBytes, startTime) {
+    const percent = total ? done / total * 100 : 100;
+    updateProgress(percent, true);
+    updateChooseProgress(percent, done, total);
+    setImportStatus({ phase: 'indexing', done, total, totalBytes, processedBytes, percent, startTime });
+}
+
+function updateSearchProgress(percent, show = true, done = 0, total = 0) {
     const wrap = document.getElementById('searchProgressWrap');
     const fill = document.getElementById('searchProgressFill');
     const info = document.getElementById('outputInfo');
     if (!wrap || !fill) return;
-    wrap.style.display = show ? 'block' : 'none';
-    fill.style.width = Math.max(0, Math.min(100, percent)) + '%';
-    if (show && info && LANGUAGES[currentLang] && LANGUAGES[currentLang].searching) {
-        info.innerHTML = LANGUAGES[currentLang].searching(percent);
+    const value = clampPercent(percent);
+    if (show) {
+        searchViewState = { percent: value, done, total, visible: true };
+        wrap.style.display = 'block';
+        wrap.setAttribute('aria-hidden', 'false');
+        wrap.setAttribute('aria-valuenow', String(Math.round(value)));
+        wrap.setAttribute('aria-valuetext', Math.round(value) + '% - ' + done + ' / ' + total);
+        fill.style.width = value + '%';
+        if (info && typeof LANGUAGES !== 'undefined' && LANGUAGES[currentLang] && typeof LANGUAGES[currentLang].searching === 'function') {
+            info.innerHTML = LANGUAGES[currentLang].searching(value, done, total);
+        }
+    } else {
+        searchViewState = null;
+        wrap.style.display = 'none';
+        wrap.setAttribute('aria-hidden', 'true');
+        wrap.setAttribute('aria-valuenow', String(Math.round(value)));
+        fill.style.width = value + '%';
     }
 }
-async function handleImport(input) {
-    // import from file input
-    const files = input.files;
-    if (!files || !files.length) return;
 
-    // 推断代表性文件夹名并保存在按钮的 dataset 中，显示由 setChooseReady 在索引完成后决定
+function cancelImport() {
+    if (importTask) importTask.cancelled = true;
+}
+
+function cancelSearch() {
+    if (searchTask) searchTask.cancelled = true;
+}
+
+async function handleImport(input) {
+    const files = input && input.files;
+    if (!files || !files.length || importTask) return;
+    const fileList = Array.from(files);
     const chooseBtn = document.getElementById('chooseDirBtn');
     try {
-        const arr = Array.from(files);
+        const arr = fileList;
         let folderName = '';
         if (arr.length) {
             const f0 = arr[0];
@@ -438,55 +624,76 @@ async function handleImport(input) {
             } else if (f0.path) {
                 const p = (f0.path || '').replace(/\\/g, '/');
                 const parts = p.split('/');
-                folderName = parts.length > 1 ? parts[parts.length-2] : (parts[0] || '');
+                folderName = parts.length > 1 ? parts[parts.length - 2] : (parts[0] || '');
             }
         }
         if (!folderName && typeof LANGUAGES !== 'undefined' && LANGUAGES[currentLang] && LANGUAGES[currentLang].chooseFolder) folderName = LANGUAGES[currentLang].chooseFolder;
         if (chooseBtn && folderName) chooseBtn.dataset.folderName = folderName;
-    } catch (e) { /* ignore */ }
-
-    await processFiles(Array.from(files));
-    // reset input so same folder can be re-selected
-    try { input.value = ''; } catch(e) {}
+    } catch (e) { /* ignore folder-name inference errors */ }
+    await processFiles(fileList);
+    try { input.value = ''; } catch (e) { /* ignore */ }
 }
 
 async function processFiles(filesArr) {
-    if (!filesArr || filesArr.length === 0) return;
-    // Use the choose button UI for progress/status (older refs to dropZone/loadStatus no longer exist)
+    if (!filesArr || filesArr.length === 0 || importTask) return false;
     const chooseBtn = document.getElementById('chooseDirBtn');
-    if (chooseBtn) chooseBtn.classList.add('busy');
-    updateChooseProgress(0);
-    db = [];
     const total = filesArr.length;
-    const chunkSize = 20000;
-    for (let i = 0; i < total; i += chunkSize) {
-        const end = Math.min(i + chunkSize, total);
-        for (let j = i; j < end; j++) {
-            const f = filesArr[j];
-            const path = f.webkitRelativePath || f.relativePath || (f.path || f.name);
-            const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-            const lastSlash = normalized.lastIndexOf('/');
-            const fileName = normalized.substring(lastSlash + 1);
-            const lastDot = fileName.lastIndexOf('.');
-            db.push({
-                d: normalized.substring(0, lastSlash),
-                n: fileName,
-                no: lastDot === -1 ? fileName : fileName.substring(0, lastDot),
-                e: (lastDot === -1 ? "" : fileName.substring(lastDot)).toLowerCase()
-            });
+    const totalBytes = filesArr.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+    const startTime = performance.now();
+    const task = { cancelled: false };
+    importTask = task;
+    const indexed = [];
+    let processedBytes = 0;
+    let done = 0;
+    if (chooseBtn) chooseBtn.classList.add('busy');
+    updateImportProgress(0, total, totalBytes, 0, startTime);
+    try {
+        for (let i = 0; i < total; i += INDEX_CHUNK_SIZE) {
+            const end = Math.min(i + INDEX_CHUNK_SIZE, total);
+            for (let j = i; j < end; j += 1) {
+                if (task.cancelled) break;
+                const f = filesArr[j];
+                const path = f.webkitRelativePath || f.relativePath || (f.path || f.name);
+                const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+                const lastSlash = normalized.lastIndexOf('/');
+                const fileName = normalized.substring(lastSlash + 1);
+                const lastDot = fileName.lastIndexOf('.');
+                indexed.push({
+                    d: normalized.substring(0, lastSlash),
+                    n: fileName,
+                    no: lastDot === -1 ? fileName : fileName.substring(0, lastDot),
+                    e: (lastDot === -1 ? '' : fileName.substring(lastDot)).toLowerCase()
+                });
+                processedBytes += Number(f.size) || 0;
+                done += 1;
+            }
+            updateImportProgress(done, total, totalBytes, processedBytes, startTime);
+            if (task.cancelled) break;
+            if (done < total) await yieldToBrowser();
         }
-        const p = Math.round((end / total) * 100);
-        // update both global progress bar and the choose button mini-progress/status
-        updateProgress(p);
-        updateChooseProgress(p);
-        await new Promise(r => setTimeout(r, 5));
+        const endTime = performance.now();
+        if (task.cancelled) {
+            setImportStatus({ phase: 'cancelled', done, total, totalBytes, processedBytes, percent: total ? done / total * 100 : 0, startTime, endTime });
+            updateProgress(0, false);
+            setChooseCancelled(done);
+            return false;
+        }
+        db = indexed;
+        setImportStatus({ phase: 'done', done: total, total, totalBytes, processedBytes, percent: 100, startTime, endTime });
+        updateProgress(100, false);
+        if (chooseBtn) setChooseReady(total);
+        return true;
+    } catch (error) {
+        console.error('Asset index failed', error);
+        setImportStatus({ phase: 'error', done, total, totalBytes, processedBytes, percent: total ? done / total * 100 : 0, startTime, endTime: performance.now() });
+        updateProgress(0, false);
+        return false;
+    } finally {
+        importTask = null;
+        if (chooseBtn) chooseBtn.classList.remove('busy');
+        updateRunBtnState();
     }
-    updateProgress(100, false);
-    if (chooseBtn) { chooseBtn.classList.remove('busy'); setChooseReady(total); }
-    updateRunBtnState();
-} 
-
-// 注意：已禁用拖放导入与目录递归；请通过隐藏的文件输入(`#dirInput`) 并调用 `handleImport()` 导入文件。
+}
 
 
 // 将当前选中的分类渲染到右侧网格
@@ -643,105 +850,118 @@ function updateAllBtnState() {
 
 // 注意：已禁用拖放导入；请使用隐藏的文件输入(`#dirInput`) 并调用 `handleImport()`。
 async function handleSearch() {
-    const rawInput = document.getElementById('inputText').value.trim();
-    if (!rawInput) return;
-    // 只要有输入就查找，不再依赖格式筛选
+    const inputEl = document.getElementById('inputText');
+    const rawInput = inputEl ? inputEl.value.trim() : '';
+    if (!rawInput || !db.length || searchTask || importTask) return;
     const isCase = document.getElementById('caseSensitive').checked;
+    const ignoreSpaces = document.getElementById('ignoreSpaces').checked;
     const btn = document.getElementById('runBtn');
     const info = document.getElementById('outputInfo');
-    btn.disabled = true;
+    const cancelBtn = document.getElementById('cancelSearchBtn');
+    const t = typeof LANGUAGES !== 'undefined' ? (LANGUAGES[currentLang] || {}) : {};
     if (!isMatchingModeSelected()) {
-        info.innerHTML = LANGUAGES[currentLang].pleaseSelectLogic || LANGUAGES[currentLang].pleaseSelect || 'Please select a matching mode';
-        btn.disabled = false;
+        if (info) info.innerHTML = t.pleaseSelectLogic || t.pleaseSelect || 'Please select a matching mode';
+        updateRunBtnState();
         return;
     }
-    // 文本区域触发行号更新
-    if (typeof updateGutter === 'function') updateGutter(document.getElementById('inputText'));
-    // 解析输入：文件名 [空格] 相对路径
-    const stripSpace = s => s.replace(/\s+/g, '');
-    // 允许多空格分隔，且路径可带空格
-    const queryLines = rawInput.split('\n').filter(l => l.trim()).map(line => {
-        // 只分割第一个空白，后面全是路径
+    if (typeof updateGutter === 'function') updateGutter(inputEl);
+    const queryLines = rawInput.split('\n').filter(line => line.trim()).map(line => {
         const match = line.trim().match(/^(\S+)\s+(.+)$/);
         if (!match) return null;
         return {
-            name: match[1], // 不在此处做大小写处理/去空格，由 normalize 统一处理
+            name: match[1],
             path: match[2].trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
         };
     }).filter(Boolean);
-
-    let matches = [];
-    const ignoreSpaces = document.getElementById('ignoreSpaces').checked;
-    const selectedExtsLocal = selectedExts; // use currently selected format tags (Set)
-
-    // extension filter: normalize selected extensions (ensure they start with .) when checking
-    const normalizedSelectedExts = new Set(Array.from(selectedExtsLocal).map(s => s.startsWith('.') ? s : '.' + s));
-
-    const normalize = s => {
-        let out = isCase ? s : s.toLowerCase();
-        if (ignoreSpaces) out = out.replace(/\s+/g, '');
-        return out;
+    const modes = new Set(Array.from(document.querySelectorAll('.required-chk:checked')).map(el => el.value));
+    const normalizedSelectedExts = new Set(Array.from(selectedExts).map(ext => ext.startsWith('.') ? ext : '.' + ext));
+    const normalize = value => {
+        let output = isCase ? value : value.toLowerCase();
+        if (ignoreSpaces) output = output.replace(/\s+/g, '');
+        return output;
     };
-
-    const nameEquals = (fileName, qName) => {
-        const fNorm = normalize(fileName);
-        const qNorm = normalize(qName);
-        if (fNorm === qNorm) return true;
-        // 兼容性回退：若用户没有选中忽略空格，也允许去空格比较（与 Python 脚本行为一致）
-        const fNoSpace = (isCase ? fileName : fileName.toLowerCase()).replace(/\s+/g, '');
-        const qNoSpace = (isCase ? qName : qName.toLowerCase()).replace(/\s+/g, '');
-        return fNoSpace === qNoSpace;
+    const compact = value => (isCase ? value : value.toLowerCase()).replace(/\s+/g, '');
+    const nameMatches = (fileName, queryName) => {
+        const fileNorm = normalize(fileName);
+        const queryNorm = normalize(queryName);
+        const exact = fileNorm === queryNorm || compact(fileName) === compact(queryName);
+        return (modes.has('exact') && exact)
+            || (modes.has('prefix') && fileNorm.startsWith(queryNorm))
+            || (modes.has('suffix') && fileNorm.endsWith(queryNorm))
+            || (modes.has('fuzzy') && fileNorm.includes(queryNorm));
     };
-
     const totalFiles = db.length;
-    const totalSteps = Math.max(1, totalFiles * queryLines.length);
+    const totalSteps = Math.max(1, totalFiles * Math.max(1, queryLines.length));
+    const task = { cancelled: false };
+    searchTask = task;
+    const matches = [];
     let processed = 0;
     let lastPercent = -1;
-    updateSearchProgress(0, true);
-
-    for (const q of queryLines) {
-        const qPathNorm = normalize(q.path);
-        // 收集所有候选项
-        const candidates = [];
-        for (const file of db) {
-            // 扩展名过滤（如果有选择则只匹配被选中的格式）
-            if (normalizedSelectedExts.size > 0 && !normalizedSelectedExts.has(file.e)) { processed++; continue; }
-
-            const fileDirRaw = file.d.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-            const fileDirNorm = normalize(fileDirRaw);
-
-            // 路径匹配：如果提供了路径则要求包含（更接近 Python 的 os.walk 行为）
-            if (qPathNorm && !fileDirNorm.includes(qPathNorm)) { processed++; continue; }
-
-            if (!nameEquals(file.no, q.name)) { processed++; continue; }
-
-            candidates.push(file);
-            processed++;
-            const p = Math.round((processed / totalSteps) * 100);
-            if (p !== lastPercent) { updateSearchProgress(p, true); lastPercent = p; }
-        }
-
-        if (candidates.length === 0) continue;
-
-        // 选择最深的候选（按目录层级或路径长度）
-        candidates.sort((a, b) => {
-            const aDepth = a.d.split('/').filter(Boolean).length;
-            const bDepth = b.d.split('/').filter(Boolean).length;
-            if (aDepth !== bDepth) return bDepth - aDepth; // 深度越大优先
-            return b.d.length - a.d.length; // 否则路径越长优先
-        });
-
-        const chosen = candidates[0];
-        matches.push(`${chosen.n} ${chosen.d}`);
+    if (btn) btn.disabled = true;
+    if (cancelBtn) {
+        cancelBtn.hidden = false;
+        cancelBtn.innerText = t.cancel || 'Cancel';
     }
-    document.getElementById('outputText').value = matches.join('\n');
-    // 更新输出处的行号显示
-    if (typeof updateGutter === 'function') updateGutter(document.getElementById('outputText'));
-    info.innerHTML = LANGUAGES[currentLang].found(matches.length.toLocaleString());
-    updateProgress(100, false);
-    updateSearchProgress(100, false);
-    btn.disabled = false;
-    document.getElementById('dlBtn').disabled = matches.length === 0;
+    updateSearchProgress(0, true, 0, totalSteps);
+    try {
+        for (const query of queryLines) {
+            if (task.cancelled) break;
+            const queryPath = normalize(query.path);
+            const candidates = [];
+            for (const file of db) {
+                if (task.cancelled) break;
+                let candidate = true;
+                if (normalizedSelectedExts.size > 0 && !normalizedSelectedExts.has(file.e)) candidate = false;
+                const fileDirRaw = file.d.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+                const fileDirNorm = normalize(fileDirRaw);
+                if (candidate && queryPath && !fileDirNorm.includes(queryPath)) candidate = false;
+                if (candidate && !nameMatches(file.no, query.name)) candidate = false;
+                processed += 1;
+                const percent = Math.round(processed / totalSteps * 100);
+                if (percent !== lastPercent || processed % SEARCH_CHUNK_SIZE === 0) {
+                    updateSearchProgress(percent, true, processed, totalSteps);
+                    lastPercent = percent;
+                }
+                if (candidate) candidates.push(file);
+                if (processed % SEARCH_CHUNK_SIZE === 0) await yieldToBrowser();
+            }
+            if (task.cancelled) break;
+            if (!candidates.length) continue;
+            candidates.sort((a, b) => {
+                const aDepth = a.d.split('/').filter(Boolean).length;
+                const bDepth = b.d.split('/').filter(Boolean).length;
+                if (aDepth !== bDepth) return bDepth - aDepth;
+                return b.d.length - a.d.length;
+            });
+            const chosen = candidates[0];
+            matches.push(chosen.n + ' ' + chosen.d);
+        }
+        if (task.cancelled) {
+            if (info) info.innerHTML = t.searchCancelled || 'Search cancelled';
+            updateSearchProgress(0, false);
+            return false;
+        }
+        if (processed < totalSteps) updateSearchProgress(100, true, totalSteps, totalSteps);
+        const output = document.getElementById('outputText');
+        if (output) {
+            output.value = matches.join('\n');
+            if (typeof updateGutter === 'function') updateGutter(output);
+        }
+        if (info) info.innerHTML = typeof t.found === 'function' ? t.found(matches.length.toLocaleString()) : ('Found ' + matches.length + ' assets');
+        updateSearchProgress(100, false, totalSteps, totalSteps);
+        const dlBtn = document.getElementById('dlBtn');
+        if (dlBtn) dlBtn.disabled = matches.length === 0;
+        return true;
+    } catch (error) {
+        console.error('Asset search failed', error);
+        if (info) info.innerHTML = t.searchError || 'Search failed. Please try again.';
+        updateSearchProgress(0, false);
+        return false;
+    } finally {
+        searchTask = null;
+        if (cancelBtn) cancelBtn.hidden = true;
+        updateRunBtnState();
+    }
 }
 function download() {
     const blob = new Blob([document.getElementById('outputText').value], {type: 'text/plain'});
@@ -749,8 +969,8 @@ function download() {
     a.href = URL.createObjectURL(blob);
     a.download = `Search_Export_${Date.now()}.txt`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
-
 // 行号同步辅助
 function updateGutter(textarea) {
     const wrapper = textarea.closest('.code-wrapper');
@@ -798,6 +1018,13 @@ function syncEditorButtons() {
 window.addEventListener('resize', () => syncEditorButtons());
 // 在 DOMContentLoaded 已经调用 attachLineCounter；再一次确保按钮尺寸同步
 window.addEventListener('DOMContentLoaded', () => setTimeout(() => { syncEditorButtons(); }, 10));
+window.addEventListener('DOMContentLoaded', () => {
+    initTheme();
+    const cancelImportBtn = document.getElementById('cancelImportBtn');
+    if (cancelImportBtn) cancelImportBtn.addEventListener('click', cancelImport);
+    const cancelSearchBtn = document.getElementById('cancelSearchBtn');
+    if (cancelSearchBtn) cancelSearchBtn.addEventListener('click', cancelSearch);
+});
 
 // 固定主题为黑白灰点缀（不随时间变化）
 function setThemeByTime() {

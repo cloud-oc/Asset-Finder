@@ -3,6 +3,8 @@ const LANGUAGES = {
     zh: {
         title: "资产查找器",
         description: "智能检索项目内的资产文件",
+        themeToLight: "切换到浅色主题",
+        themeToDark: "切换到深色主题",
         filter: "文件格式筛选",
         all: "全选",
         none: "全不选",
@@ -13,18 +15,32 @@ const LANGUAGES = {
         fuzzy: "关键词匹配",
         case: "区分大小写",
         ignoreSpace: "忽略空格",
-        import: `<i class="fa-solid fa-folder-open"></i> 点击选择文件夹导入`, 
+        import: `<i class="fa-solid fa-folder-open"></i> 点击选择文件夹导入`,
         chooseFolder: "选择资产文件夹",
-        chooseIndexingShort: percent => `索引中 ${percent}%`,
+        chooseIndexingShort: (percent, done, total) => `索引中 ${Math.round(percent)}% · ${done}/${total}`,
+        chooseCancelled: done => `已取消 · 已处理 ${done} 个文件`,
         chooseReadyShort: total => `已索引 ${total} 个文件`,
+        importHint: "选择项目文件夹后会在浏览器本地建立索引；不会读取文件内容。大目录可随时取消。",
+        importProgressLabel: "文件索引进度",
+        searchProgressLabel: "搜索进度",
+        importing: (done, total) => `正在建立索引 · ${done}/${total} 个文件`,
+        importReady: "索引已就绪",
+        importCancelled: "索引已取消，保留上一次可用索引",
+        importError: "索引失败，请重试。",
+        importMeta: (done, total, bytes, totalBytes, rate) => `${done}/${total} 个文件 · ${bytes}/${totalBytes} · ${rate}`,
+        importEta: (eta, rate) => `预计剩余 ${eta} · ${rate}`,
+        importElapsed: elapsed => `用时 ${elapsed}`,
+        cancel: "取消",
         input: "待查文件名-相对路径列表",
         output: "搜索结果",
         run: "搜索",
         export: "导出",
         indexing: percent => `<i class="fa-solid fa-spinner fa-spin"></i> 索引进度: ${percent}%`,
         ready: total => `<i class="fa-solid fa-check-circle"></i> 索引完成: <span class="count-tag">${total}</span> 个文件`,
-        searching: percent => `<i class="fa-solid fa-magnifying-glass"></i> 搜索中... ${percent}%`, 
+        searching: (percent, done, total) => `<i class="fa-solid fa-magnifying-glass"></i> 搜索中... ${Math.round(percent)}% · ${done}/${total}`,
         found: count => `共找到 <span class=\"count-tag\">${count}</span> 个资源`,
+        searchCancelled: "搜索已取消，已保留原结果。",
+        searchError: "搜索失败，请重试。",
 
         selectCat: "全选",
         pleaseSelect: "请至少选择一种格式！",
@@ -51,6 +67,8 @@ const LANGUAGES = {
         helpLocalFallback: file => `Unable to load local help file ${file}. Some browsers block fetch when using file://. You can use the VS Code Live Server extension, or run 'npx http-server' if Node.js is available, or click the button below to select and load the local help file.`,
         title: "Asset Finder Web",
         description: "Intelligently locate project asset files",
+        themeToLight: "Switch to light theme",
+        themeToDark: "Switch to dark theme",
         filter: "Filter by File Format",
         all: "All",
         none: "None",
@@ -61,17 +79,32 @@ const LANGUAGES = {
         fuzzy: "Keyword Match",
         case: "Case Sensitive",
         ignoreSpace: "Ignore Spaces",
-        import: `<i class="fa-solid fa-folder-open"></i> Click to select folder`, 
+        import: `<i class="fa-solid fa-folder-open"></i> Click to select folder`,
         chooseFolder: "Choose folder to scan",
-        chooseIndexingShort: percent => `Indexing ${percent}%`,
-        chooseReadyShort: total => `Indexed ${total} files`,        input: "Files to Check - Relative Path List",
+        chooseIndexingShort: (percent, done, total) => `Indexing ${Math.round(percent)}% · ${done}/${total}`,
+        chooseCancelled: done => `Cancelled · ${done} files processed`,
+        chooseReadyShort: total => `Indexed ${total} files`,
+        importHint: "Choose a project folder to build a local index. File contents are never read; large imports can be cancelled.",
+        importProgressLabel: "File indexing progress",
+        searchProgressLabel: "Search progress",
+        importing: (done, total) => `Building index · ${done}/${total} files`,
+        importReady: "Index ready",
+        importCancelled: "Index cancelled; the previous index is still available",
+        importError: "Index failed. Please try again.",
+        importMeta: (done, total, bytes, totalBytes, rate) => `${done}/${total} files · ${bytes}/${totalBytes} · ${rate}`,
+        importEta: (eta, rate) => `ETA ${eta} · ${rate}`,
+        importElapsed: elapsed => `Completed in ${elapsed}`,
+        cancel: "Cancel",
+        input: "Files to Check - Relative Path List",
         output: "Search Results",
         run: "Search",
         export: "Export",
         indexing: percent => `<i class="fa-solid fa-spinner fa-spin"></i> Indexing: ${percent}%`,
         ready: total => `<i class="fa-solid fa-check-circle"></i> ✅ Index Ready: <span class="count-tag">${total}</span> files`,
-        searching: percent => `<i class="fa-solid fa-magnifying-glass"></i> Searching... ${percent}%`, 
+        searching: (percent, done, total) => `<i class="fa-solid fa-magnifying-glass"></i> Searching... ${Math.round(percent)}% · ${done}/${total}`,
         found: count => `Found <span class=\"count-tag\">${count}</span> assets`,
+        searchCancelled: "Search cancelled; the previous result is preserved.",
+        searchError: "Search failed. Please try again.",
 
         selectCat: "Select All",
         pleaseSelect: "Please select at least one format!",
@@ -87,7 +120,7 @@ const LANGUAGES = {
         removeExtTooltip: "Remove extension",
         addExtTooltip: "Add extension",
         switchToOther: "Switch to Chinese",
-        helpTitle: "Help", 
+        helpTitle: "Help",
     }};
 
 let currentLang = 'zh';
@@ -99,6 +132,9 @@ function setLang(lang) {
     document.title = t.title + (t.description ? ` - ${t.description}` : '');
     document.getElementById('titleText').innerHTML = '<img src="favicon.svg" class="logo-icon" alt="" aria-hidden="true">' + t.title + '<span class="logo-sub">' + (t.description || '') + '</span>';
     const filterEl = document.getElementById('filterTitle'); if (filterEl) filterEl.innerText = t.filter;
+    const hintEl = document.getElementById('importHint'); if (hintEl) hintEl.innerText = t.importHint || '';
+    const importProgressBar = document.getElementById('importProgressBar'); if (importProgressBar) importProgressBar.setAttribute('aria-label', t.importProgressLabel || 'File indexing progress');
+    const searchProgressBar = document.getElementById('searchProgressWrap'); if (searchProgressBar) searchProgressBar.setAttribute('aria-label', t.searchProgressLabel || 'Search progress');
     const allBtn = document.getElementById('allBtn'); if (allBtn) allBtn.innerText = t.all; // will be toggled between All/None by updateAllBtnState
     const noneBtn = document.getElementById('noneBtn'); if (noneBtn) noneBtn.innerText = t.none;
     document.getElementById('searchLogicTitle').innerText = t.searchLogic;
@@ -124,6 +160,8 @@ function setLang(lang) {
     const gName = document.getElementById('customGroupName'); if (gName) gName.placeholder = t.groupNamePlaceholder || 'Group name';
     const gExt = document.getElementById('customGroupExts'); if (gExt) gExt.placeholder = t.groupExtsPlaceholder || '.ext1, .ext2, ... up to 8';
     const addG = document.getElementById('addGroupBtn'); if (addG) addG.innerText = t.addGroup || 'Add Group';
+    const cancelImportBtn = document.getElementById('cancelImportBtn'); if (cancelImportBtn) cancelImportBtn.innerText = t.cancel || 'Cancel';
+    const cancelSearchBtn = document.getElementById('cancelSearchBtn'); if (cancelSearchBtn) cancelSearchBtn.innerText = t.cancel || 'Cancel';
 
 
     const allB = document.getElementById('allBtn'); if (allB) allB.innerText = t.all || 'All';
@@ -165,6 +203,9 @@ function setLang(lang) {
 
     document.querySelectorAll('.category-header .cat-toggle').forEach(btn => btn.innerText = t.selectCat);
     if (typeof updateAllBtnState === 'function') updateAllBtnState();
+    if (typeof updateThemeButtonLabel === 'function') updateThemeButtonLabel();
+    if (typeof importViewState !== 'undefined' && importViewState && typeof setImportStatus === 'function') setImportStatus(importViewState);
+    if (typeof searchViewState !== 'undefined' && searchViewState && searchViewState.visible && typeof updateSearchProgress === 'function') updateSearchProgress(searchViewState.percent, true, searchViewState.done, searchViewState.total);
     // 更新帮助按钮和弹窗内容
     const helpBtn = document.getElementById('helpBtn'); if (helpBtn) { helpBtn.title = t.helpTitle || 'Help'; helpBtn.setAttribute('aria-label', t.helpTitle || 'Help'); }
     const langBtn = document.getElementById('langSwitch'); if (langBtn) { const switchLabel = (t && t.switchToOther) ? t.switchToOther : ((lang === 'zh') ? '切换到英文' : 'Switch to Chinese'); langBtn.title = switchLabel; langBtn.setAttribute('aria-label', switchLabel); }

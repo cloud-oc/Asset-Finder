@@ -12,6 +12,19 @@
     <link rel="shortcut icon" href="favicon.svg">
     <link rel="mask-icon" href="favicon.svg" color="#00C2FF">
     <meta name="theme-color" content="#071018">
+    <script>
+        // Apply the saved/system theme before the first paint to avoid a flash.
+        (function () {
+            try {
+                var saved = localStorage.getItem('asset-finder-theme');
+                var theme = saved === 'light' || saved === 'dark'
+                    ? saved
+                    : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+                document.documentElement.dataset.theme = theme;
+                document.documentElement.style.colorScheme = theme;
+            } catch (e) { /* use the dark fallback */ }
+        }());
+    </script>
 </head>
 
 <body>
@@ -22,6 +35,10 @@
             </div>
             <div class="header-right">
                 <div class="header-actions" role="toolbar" aria-label="Top actions">
+                    <button class="theme-toggle" id="themeToggle" type="button" title="切换主题" aria-label="切换主题">
+                        <i class="fa-solid fa-sun" aria-hidden="true"></i>
+                        <span class="sr-only">切换明暗主题</span>
+                    </button>
                     <button class="help-btn" id="helpBtn" title="Help" aria-label="Help">
                         <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
                     </button>
@@ -35,7 +52,7 @@
             </div>
         </div>
     </div>
-    <div class="global-progress" id="progressWrap"><div id="progressFill"></div></div>
+    <div class="global-progress" id="progressWrap" role="progressbar" aria-label="导入进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-hidden="true"><div id="progressFill"></div></div>
     <div class="main-container">
         <div class="card full-width">
 
@@ -51,6 +68,23 @@
                 <input type="file" id="dirInput" webkitdirectory directory multiple style="display:none" onchange="handleImport(this)">
             </div>
 
+            <p class="helper-text" id="importHint"></p>
+            <div class="import-status" id="importStatus" role="status" aria-live="polite" aria-atomic="false" hidden>
+                <div class="import-status-head">
+                    <span id="importStatusLabel"></span>
+                    <div class="import-status-actions">
+                        <strong id="importStatusPercent">0%</strong>
+                        <button id="cancelImportBtn" class="btn-cancel" type="button" hidden></button>
+                    </div>
+                </div>
+                <div class="progress-track" id="importProgressBar" role="progressbar" aria-label="文件索引进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress-track-fill" id="importProgressFill"></div>
+                </div>
+                <div class="import-status-meta">
+                    <span id="importProgressMeta"></span>
+                    <span id="importProgressEta"></span>
+                </div>
+            </div>
             <!-- 搜索逻辑标题显示在下方 -->
             <div class="section-title" id="searchLogicTitle"></div>
 
@@ -91,9 +125,10 @@
                 </div>
                 <button class="btn-dl" id="dlBtn" onclick="download()" disabled></button>
             </div>
-            <div class="local-progress" id="searchProgressWrap"><div id="searchProgressFill"></div></div>
+            <div class="local-progress" id="searchProgressWrap" role="progressbar" aria-label="搜索进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-hidden="true"><div id="searchProgressFill"></div></div>
             <div class="status-bar">
                 <span id="outputInfo"></span>
+                <button id="cancelSearchBtn" class="btn-cancel" type="button" hidden></button>
             </div>
         </div>
     </div>
