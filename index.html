@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Asset Finder Web</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 引入 Font Awesome 图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Favicon (folder + magnifier) -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="shortcut icon" href="favicon.svg">
+    <link rel="mask-icon" href="favicon.svg" color="#00C2FF">
+    <meta name="theme-color" content="#071018">
+    <script>
+        // Apply the saved/system theme before the first paint to avoid a flash.
+        (function () {
+            try {
+                var saved = localStorage.getItem('asset-finder-theme');
+                var theme = saved === 'light' || saved === 'dark'
+                    ? saved
+                    : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+                document.documentElement.dataset.theme = theme;
+                document.documentElement.style.colorScheme = theme;
+            } catch (e) { /* use the dark fallback */ }
+        }());
+    </script>
+</head>
+
+<body>
+    <div class="header-bar">
+        <div class="header-inner">
+            <div class="header-left">
+                <div class="logo-title" id="titleText"></div>
+            </div>
+            <div class="header-right">
+                <div class="header-actions" role="toolbar" aria-label="Top actions">
+                    <button class="theme-toggle" id="themeToggle" type="button" title="切换主题" aria-label="切换主题">
+                        <i class="fa-solid fa-sun" aria-hidden="true"></i>
+                        <span class="sr-only">切换明暗主题</span>
+                    </button>
+                    <button class="help-btn" id="helpBtn" title="Help" aria-label="Help">
+                        <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+                    </button>
+                    <button class="lang-switch-btn" id="langSwitch" onclick="switchLang()" title="Switch language" aria-label="Switch language">
+                        <i class="fa-solid fa-language" aria-hidden="true"></i>
+                    </button>
+                    <a id="githubBtn" class="github-btn" href="https://github.com/cloud-oc/AssetFinderWeb" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub repository">
+                        <i class="fa-brands fa-github" aria-hidden="true"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="global-progress" id="progressWrap" role="progressbar" aria-label="导入进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-hidden="true"><div id="progressFill"></div></div>
+    <div class="main-container">
+        <div class="card full-width">
+
+            <!-- 选择行：包含选择文件夹按钮和格式筛选按钮 -->
+            <div class="choose-row">
+                <button id="chooseDirBtn" class="btn-choose small" type="button" aria-live="polite">
+                    <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+                    <span class="choose-label">选择资产文件夹</span>
+                    <span class="choose-status" aria-live="polite" role="status" aria-atomic="true"></span>
+                    <span class="choose-progress" aria-hidden="true"><span class="choose-progress-fill"></span></span>
+                </button>
+                <button id="openFormatBtn" class="btn-format" type="button">文件格式筛选</button>
+                <input type="file" id="dirInput" webkitdirectory directory multiple style="display:none" onchange="handleImport(this)">
+            </div>
+
+            <p class="helper-text" id="importHint"></p>
+            <div class="import-status" id="importStatus" role="status" aria-live="polite" aria-atomic="false" hidden>
+                <div class="import-status-head">
+                    <span id="importStatusLabel"></span>
+                    <div class="import-status-actions">
+                        <strong id="importStatusPercent">0%</strong>
+                        <button id="cancelImportBtn" class="btn-cancel" type="button" hidden></button>
+                    </div>
+                </div>
+                <div class="progress-track" id="importProgressBar" role="progressbar" aria-label="文件索引进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress-track-fill" id="importProgressFill"></div>
+                </div>
+                <div class="import-status-meta">
+                    <span id="importProgressMeta"></span>
+                    <span id="importProgressEta"></span>
+                </div>
+            </div>
+            <!-- 搜索逻辑标题显示在下方 -->
+            <div class="section-title" id="searchLogicTitle"></div>
+
+
+            <div class="search-logic" style="margin-bottom:12px;">
+                <div class="search-logic-group required">
+                    <span class="group-title" id="requiredGroupTitle"><strong></strong><span class="req-star" aria-hidden="true">*</span></span>
+                    <label class="mode-item"><input type="checkbox" class="logic-chk required-chk" value="exact"></label>
+                    <label class="mode-item"><input type="checkbox" class="logic-chk required-chk" value="prefix"></label>
+                    <label class="mode-item"><input type="checkbox" class="logic-chk required-chk" value="suffix"></label>
+                    <label class="mode-item"><input type="checkbox" class="logic-chk required-chk" value="fuzzy"></label>
+                </div>
+                <div class="search-logic-opts" style="display:flex; gap:10px; align-items:center;">
+                    <span class="group-title" id="optionalGroupTitle"><strong></strong></span>
+                    <label class="mode-item" id="caseLabel"><input type="checkbox" id="caseSensitive"></label>
+                    <label class="mode-item" id="ignoreLabel"><input type="checkbox" id="ignoreSpaces"></label>
+                </div>
+            </div>
+
+
+        </div>
+        <div class="card">
+            <div class="section-title" id="inputTitle"></div>
+            <div class="editor-row">
+                <div class="code-wrapper">
+                    <div class="gutter" id="inputGutter"></div>
+                    <textarea id="inputText" wrap="off" placeholder="Example:&#10;Hero_Knight Assets/Characters&#10;Stone_A Assets/Environment/Rocks"></textarea>
+                </div>
+                <button class="btn-run" id="runBtn" onclick="handleSearch()" disabled></button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="section-title" id="outputTitle"></div>
+            <div class="editor-row">
+                <div class="code-wrapper">
+                    <div class="gutter" id="outputGutter"></div>
+                    <textarea id="outputText" wrap="off" readonly></textarea>
+                </div>
+                <button class="btn-dl" id="dlBtn" onclick="download()" disabled></button>
+            </div>
+            <div class="local-progress" id="searchProgressWrap" role="progressbar" aria-label="搜索进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-hidden="true"><div id="searchProgressFill"></div></div>
+            <div class="status-bar">
+                <span id="outputInfo"></span>
+                <button id="cancelSearchBtn" class="btn-cancel" type="button" hidden></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 格式弹窗（紧凑）- 默认隐藏（已移动到 body 层，避免被卡片裁剪） -->
+    <div class="format-modal-backdrop" id="formatModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="format-modal" role="document" tabindex="-1">
+            <div class="format-modal-header">
+                <strong id="formatModalTitle">文件格式筛选</strong>
+            </div>
+            <div class="format-modal-body">
+                <div class="format-panel small">
+                    <aside class="format-sidebar" id="formatCategories" aria-label="格式分类列表"></aside>
+                    <div class="format-main">
+                        <div class="format-main-header">
+                            <input type="search" id="formatSearch" placeholder="搜索格式 / 扩展名" aria-label="搜索格式">
+                            <div id="categoryControls" class="category-controls" aria-hidden="true"></div>
+                            <div class="format-actions">
+                                <button id="allBtn" onclick="toggleAll()"></button>
+                            </div>
+                        </div>
+                        <div class="format-grid-wrap" id="formatGridWrap" aria-live="polite"></div>
+                    </div>
+                </div>
+                <div class="custom-exts">
+                    <input type="text" id="customGroupName" placeholder="自定义文件类型" aria-label="Custom group name">
+                    <input type="text" id="customGroupExts" placeholder="自定义文件扩展名（无需加.）" aria-label="Extensions comma separated">
+                    <button id="addGroupBtn" type="button">添加组</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="help-modal-backdrop" id="helpModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="help-modal" role="document" tabindex="-1">
+            <div class="modal-body" id="helpModalBody"></div>
+        </div>
+    </div>
+
+    <!-- 内联编辑弹窗 -->
+    <div class="edit-modal-backdrop" id="editModalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="edit-modal" role="document" tabindex="-1">
+            <div class="edit-modal-header"><strong id="editModalTitle">编辑</strong></div>
+            <div class="edit-modal-body" id="editModalBody"></div>
+            <div class="edit-modal-actions">
+                <button id="editModalCancel" type="button">取消</button>
+                <button id="editModalSave" type="button">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="lang.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
