@@ -2,13 +2,13 @@
 const LANGUAGES = {
     zh: {
         title: "资产查找器",
-        description: "智能检索项目内的资产文件",
+        description: "本地项目资源批量检索与核对",
         themeToLight: "切换到浅色主题",
         themeToDark: "切换到深色主题",
-        filter: "文件格式筛选",
+        filter: "资源格式筛选",
         all: "全选",
         none: "全不选",
-        searchLogic: "文件名匹配模式",
+        searchLogic: "匹配规则",
         exact: "全字匹配",
         prefix: "前缀匹配",
         suffix: "后缀匹配",
@@ -16,11 +16,11 @@ const LANGUAGES = {
         case: "区分大小写",
         ignoreSpace: "忽略空格",
         import: `<i class="fa-solid fa-folder-open"></i> 点击选择文件夹导入`,
-        chooseFolder: "选择资产文件夹",
+        chooseFolder: "选择项目目录",
         chooseIndexingShort: (percent, done, total) => `索引中 ${Math.round(percent)}% · ${done}/${total}`,
         chooseCancelled: done => `已取消 · 已处理 ${done} 个文件`,
         chooseReadyShort: total => `已索引 ${total} 个文件`,
-        importHint: "选择项目文件夹后会在浏览器本地建立索引；不会读取文件内容。大目录可随时取消。",
+        importHint: "选择项目目录建立本地索引；不会读取文件内容。可用于资源盘点、清单核对和交付检查，大目录可随时取消。",
         importProgressLabel: "文件索引进度",
         searchProgressLabel: "搜索进度",
         importing: (done, total) => `正在建立索引 · ${done}/${total} 个文件`,
@@ -31,14 +31,16 @@ const LANGUAGES = {
         importEta: (eta, rate) => `预计剩余 ${eta} · ${rate}`,
         importElapsed: elapsed => `用时 ${elapsed}`,
         cancel: "取消",
-        input: "待查文件名-相对路径列表",
-        output: "搜索结果",
-        run: "搜索",
-        export: "导出",
+        inputHint: "可直接粘贴排期、上传状态或其他核对清单。每行填写：文件名 + 相对路径。",
+        inputPlaceholder: "将清单粘贴到这里\n文件名    相对/子路径\nHero_Knight    Assets/Characters",
+        input: "待核对清单 · 文件名 + 相对路径",
+        output: "核对结果",
+        run: "开始核对",
+        export: "导出结果",
         indexing: percent => `<i class="fa-solid fa-spinner fa-spin"></i> 索引进度: ${percent}%`,
         ready: total => `<i class="fa-solid fa-check-circle"></i> 索引完成: <span class="count-tag">${total}</span> 个文件`,
-        searching: (percent, done, total) => `<i class="fa-solid fa-magnifying-glass"></i> 搜索中... ${Math.round(percent)}% · ${done}/${total}`,
-        found: count => `共找到 <span class=\"count-tag\">${count}</span> 个资源`,
+        searching: (percent, done, total) => `<i class="fa-solid fa-magnifying-glass"></i> 核对中... ${Math.round(percent)}% · ${done}/${total}`,
+        found: count => `已匹配 <span class=\"count-tag\">${count}</span> 条记录`,
         searchCancelled: "搜索已取消，已保留原结果。",
         searchError: "搜索失败，请重试。",
 
@@ -46,8 +48,8 @@ const LANGUAGES = {
         pleaseSelect: "请至少选择一种格式！",
         pleaseSelectLogic: "请至少选择一种文件名匹配方式！",
         pleaseSelectRequiredLogic: "请至少选择一种必选的文件名匹配方式！",
-        requiredGroup: "必选",
-        optionalGroup: "可选",
+        requiredGroup: "文件名匹配",
+        optionalGroup: "辅助选项",
         addGroup: "添加组",
         clearGroups: "清空组",
         groupNamePlaceholder: "自定义文件类型",
@@ -56,23 +58,23 @@ const LANGUAGES = {
         removeExtTooltip: "删除扩展",
         addExtTooltip: "添加扩展",
         switchToOther: "切换到英文",
-        helpTitle: "使用说明",
+        helpTitle: "资源检索与核对指南",
         helpLoadLocal: "从本地加载帮助文件",
         helpLocalFallback: file => `无法加载本地帮助文档 ${file}。某些浏览器在 file:// 协议下禁止 fetch。你可以使用 VS Code 的 Live Server 插件，或在安装了 Node.js 的情况下运行 \'npx http-server\'，也可以点击下面的按钮从本地选择并加载帮助文件。`,
     },
     en: {
-        helpTitle: "Help",
+        helpTitle: "Resource search & review guide",
         githubRepo: "Open GitHub repository",
         helpLoadLocal: "Load local help file",
         helpLocalFallback: file => `Unable to load local help file ${file}. Some browsers block fetch when using file://. You can use the VS Code Live Server extension, or run 'npx http-server' if Node.js is available, or click the button below to select and load the local help file.`,
         title: "Asset Finder Web",
-        description: "Intelligently locate project asset files",
+        description: "Bulk search and review local project resources",
         themeToLight: "Switch to light theme",
         themeToDark: "Switch to dark theme",
-        filter: "Filter by File Format",
+        filter: "Resource format filters",
         all: "All",
         none: "None",
-        searchLogic: "Filename Matching Mode",
+        searchLogic: "Match rules",
         exact: "Exact Match",
         prefix: "Prefix Match",
         suffix: "Suffix Match",
@@ -80,11 +82,11 @@ const LANGUAGES = {
         case: "Case Sensitive",
         ignoreSpace: "Ignore Spaces",
         import: `<i class="fa-solid fa-folder-open"></i> Click to select folder`,
-        chooseFolder: "Choose folder to scan",
+        chooseFolder: "Choose project folder",
         chooseIndexingShort: (percent, done, total) => `Indexing ${Math.round(percent)}% · ${done}/${total}`,
         chooseCancelled: done => `Cancelled · ${done} files processed`,
         chooseReadyShort: total => `Indexed ${total} files`,
-        importHint: "Choose a project folder to build a local index. File contents are never read; large imports can be cancelled.",
+        importHint: "Choose a project folder to build a local index. File contents are never read. Use it for inventory checks, list reviews, and delivery verification; large imports can be cancelled.",
         importProgressLabel: "File indexing progress",
         searchProgressLabel: "Search progress",
         importing: (done, total) => `Building index · ${done}/${total} files`,
@@ -95,14 +97,16 @@ const LANGUAGES = {
         importEta: (eta, rate) => `ETA ${eta} · ${rate}`,
         importElapsed: elapsed => `Completed in ${elapsed}`,
         cancel: "Cancel",
-        input: "Files to Check - Relative Path List",
-        output: "Search Results",
-        run: "Search",
-        export: "Export",
+        inputHint: "Paste a schedule, upload-status list, or any review checklist. One line: file name + relative path.",
+        inputPlaceholder: "Paste your checklist here\nFileName    Relative/Path\nHero_Knight    Assets/Characters",
+        input: "Review list · file name + relative path",
+        output: "Review results",
+        run: "Run check",
+        export: "Export results",
         indexing: percent => `<i class="fa-solid fa-spinner fa-spin"></i> Indexing: ${percent}%`,
         ready: total => `<i class="fa-solid fa-check-circle"></i> ✅ Index Ready: <span class="count-tag">${total}</span> files`,
-        searching: (percent, done, total) => `<i class="fa-solid fa-magnifying-glass"></i> Searching... ${Math.round(percent)}% · ${done}/${total}`,
-        found: count => `Found <span class=\"count-tag\">${count}</span> assets`,
+        searching: (percent, done, total) => `<i class="fa-solid fa-magnifying-glass"></i> Checking... ${Math.round(percent)}% · ${done}/${total}`,
+        found: count => `Matched <span class=\"count-tag\">${count}</span> records`,
         searchCancelled: "Search cancelled; the previous result is preserved.",
         searchError: "Search failed. Please try again.",
 
@@ -110,8 +114,8 @@ const LANGUAGES = {
         pleaseSelect: "Please select at least one format!",
         pleaseSelectLogic: "Please select at least one filename matching mode!",
         pleaseSelectRequiredLogic: "Please select at least one required filename matching mode!",
-        requiredGroup: "Required",
-        optionalGroup: "Optional",
+        requiredGroup: "Filename match",
+        optionalGroup: "Options",
         addGroup: "Add Group",
         clearGroups: "Clear Groups",
         groupNamePlaceholder: "Custom file type",
@@ -120,7 +124,7 @@ const LANGUAGES = {
         removeExtTooltip: "Remove extension",
         addExtTooltip: "Add extension",
         switchToOther: "Switch to Chinese",
-        helpTitle: "Help",
+        helpTitle: "Resource search & review guide",
     }};
 
 let currentLang = 'zh';
@@ -133,6 +137,8 @@ function setLang(lang) {
     document.getElementById('titleText').innerHTML = '<img src="favicon.svg" class="logo-icon" alt="" aria-hidden="true">' + t.title + '<span class="logo-sub">' + (t.description || '') + '</span>';
     const filterEl = document.getElementById('filterTitle'); if (filterEl) filterEl.innerText = t.filter;
     const hintEl = document.getElementById('importHint'); if (hintEl) hintEl.innerText = t.importHint || '';
+    const inputHintEl = document.getElementById('inputHint'); if (inputHintEl) inputHintEl.innerText = t.inputHint || '';
+    const queryInputEl = document.getElementById('inputText'); if (queryInputEl) queryInputEl.placeholder = t.inputPlaceholder || queryInputEl.placeholder;
     const importProgressBar = document.getElementById('importProgressBar'); if (importProgressBar) importProgressBar.setAttribute('aria-label', t.importProgressLabel || 'File indexing progress');
     const searchProgressBar = document.getElementById('searchProgressWrap'); if (searchProgressBar) searchProgressBar.setAttribute('aria-label', t.searchProgressLabel || 'Search progress');
     const allBtn = document.getElementById('allBtn'); if (allBtn) allBtn.innerText = t.all; // will be toggled between All/None by updateAllBtnState
@@ -207,7 +213,7 @@ function setLang(lang) {
     if (typeof importViewState !== 'undefined' && importViewState && typeof setImportStatus === 'function') setImportStatus(importViewState);
     if (typeof searchViewState !== 'undefined' && searchViewState && searchViewState.visible && typeof updateSearchProgress === 'function') updateSearchProgress(searchViewState.percent, true, searchViewState.done, searchViewState.total);
     // 更新帮助按钮和弹窗内容
-    const helpBtn = document.getElementById('helpBtn'); if (helpBtn) { helpBtn.title = t.helpTitle || 'Help'; helpBtn.setAttribute('aria-label', t.helpTitle || 'Help'); }
+    const helpBtn = document.getElementById('helpBtn'); if (helpBtn) { helpBtn.title = t.helpTitle || 'Help'; helpBtn.setAttribute('aria-label', t.helpTitle || 'Help'); helpBtn.setAttribute('aria-expanded', helpBtn.getAttribute('aria-expanded') === 'true' ? 'true' : 'false'); }
     const langBtn = document.getElementById('langSwitch'); if (langBtn) { const switchLabel = (t && t.switchToOther) ? t.switchToOther : ((lang === 'zh') ? '切换到英文' : 'Switch to Chinese'); langBtn.title = switchLabel; langBtn.setAttribute('aria-label', switchLabel); }
     const githubBtn = document.getElementById('githubBtn'); if (githubBtn) { githubBtn.title = t.githubRepo || 'GitHub'; githubBtn.setAttribute('aria-label', t.githubRepo || 'GitHub repository'); }
     // help content will be rendered when user opens the Help dialog (showHelp)
